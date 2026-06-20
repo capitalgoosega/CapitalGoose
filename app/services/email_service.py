@@ -38,7 +38,7 @@ Please complete this form at your earliest convenience so we can match you with 
 If you have any questions or need assistance along the way, our team is always here to help.
 
 Warm regards,
-The Capitol Goose Fintech Team"""
+The Capitol Goose Team"""
     )
 
 
@@ -48,24 +48,22 @@ def send_decline_email(to, score):
         "An Update on Your Loan Application",
         f"""Dear Applicant,
 
-Thank you for choosing Capitol Goose Fintech and for taking the time to submit your loan application. We genuinely appreciate the trust you've placed in us.
+Thank you for choosing Capitol Goose and for taking the time to submit your loan application. We genuinely appreciate the trust you've placed in us.
 
 After a thorough review of your application, we regret to inform you that we are unable to approve your request at this time. The primary factor in this decision was your current credit score of {score}, which fell below our minimum approval threshold.
 
-We know this isn't the news you were hoping for, and we want to be as helpful as possible in getting you to where you need to be. Here are some steps you can take to strengthen your application before reapplying:
+Specifically, your application was declined because: {denial_reason}
 
-  - Focus on paying down existing balances to lower your credit utilization
-  - Make sure all bills, loans, and obligations are paid on time going forward
-  - Avoid applying for new lines of credit in the near future
-  - Review your credit report for any errors or inaccuracies and dispute them promptly
-  - Give your credit profile at least 6 months to reflect these improvements
+We know this isn't the news you were hoping for, and we want to be as helpful as possible in getting you to where you need to be. Here is what we recommend to address this:
+
+{advice}
 
 We encourage you to reapply in 6 months. A lot can change in that time, and we would love the opportunity to work with you when you're ready.
 
-Thank you again for considering Capitol Goose Fintech. We're rooting for your success.
+Thank you again for considering Capitol Goose. We're rooting for your success.
 
 Sincerely,
-The Capitol Goose Fintech Team"""
+The Capitol Goose Team"""
     )
 
 
@@ -84,5 +82,5 @@ We want to take a moment to sincerely thank you for choosing Capitol Goose Finte
 If you have any questions while you wait or need to update any information, please don't hesitate to reach out to us directly. We're always happy to help.
 
 Warm regards,
-The Capitol Goose Fintech Team"""
+The Capitol Goose Team"""
     )
