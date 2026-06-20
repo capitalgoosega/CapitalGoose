@@ -13,7 +13,13 @@ COLLECTION_FORM_URL = "https://www.cognitoforms.com/capitalgoose1/documentupload
 
 def process_intake(db, data):
     # STEP 1 — ISOFTPULL API
-    score = run_credit_pull()
+    score = run_credit_pull(
+        ssn=data.ssn,
+        first_name=data.first_name,
+        last_name=data.last_name,
+        dob=data.dob,
+        address=data.address
+    )
     log_event(db, f"ISOFTPULL completed for {data.email}")
 
     # STEP 2 — SMART QUALITY PROCESS
@@ -29,7 +35,18 @@ def process_intake(db, data):
     # STEP 4 — FAIL FLOW
     else:
         status = "declined"
-        send_decline_email(data.email, score)
+        send_decline_email(
+            data.email,
+            score,
+            denial_reason=f"your credit score of {score} did not meet our minimum required threshold of 650",
+            advice=(
+            "  - Focus on paying down existing balances to lower your credit utilization\n"
+            "  - Make sure all bills, loans, and obligations are paid on time going forward\n"
+            "  - Avoid applying for new lines of credit in the near future\n"
+            "  - Review your credit report for any errors or inaccuracies and dispute them promptly\n"
+            "  - Give your credit profile at least 6 months to reflect these improvements"
+        )
+    )
         log_event(db, f"Applicant {data.email} declined with score {score}")
 
     return score, status
