@@ -18,7 +18,7 @@ def process_intake(db, data):
         first_name=data.first_name,
         last_name=data.last_name,
         dob=data.dob,
-        address=data.address
+        address=data.address.model_dump()
     )
     log_event(db, f"ISOFTPULL completed for {data.email}")
 
