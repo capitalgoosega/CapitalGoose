@@ -19,7 +19,7 @@ def submit_intake(data: IntakeRequest, db: Session = Depends(get_db)):
     score, status = process_intake(db, data)
 
     application = Application(
-        name=data.name,
+        name=f"{data.first_name} {data.last_name}",
         email=data.email,
         loan_amount=data.loan_amount,
         loan_type=data.loan_type,
