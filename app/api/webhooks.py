@@ -27,7 +27,7 @@ async def cognito_webhook(request: Request, db: Session = Depends(get_db)):
                 "street": raw["Entry.Street"],
                 "city": raw["Entry.City"],
                 "state": raw["Entry.State"],
-                "zip": raw[Entry.ZipCode],
+                "zip": raw["Entry.ZipCode"],
             }
         )
     except KeyError as e:
