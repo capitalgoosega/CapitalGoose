@@ -16,11 +16,19 @@ async def cognito_webhook(request: Request, db: Session = Depends(get_db)):
     
     try:
         intake_data = IntakeRequest(
-            name=raw["Entry.FullName"],
+            first_name=raw["Entry.FirstName"],
+            last_name=raw["Entry.LastName"],
             email=raw["Entry.EmailAddress"],
             loan_amount=int(raw["Entry.LoanAmount"]),
             loan_type=raw["Entry.LoanType"],
-            ssn=raw["Entry.SSN"]
+            ssn=raw["Entry.SSN"],
+            dob=raw["Entry.DateOfBirth"],
+            address= {
+                "street": raw["Entry.Street"],
+                "city": raw["Entry.City"],
+                "state": raw["Entry.State"],
+                "zip": raw[Entry.ZipCode],
+            }
         )
     except KeyError as e:
         raise HTTPException(status_code=400, detail=f"Missing field from Cognito: {e}")
