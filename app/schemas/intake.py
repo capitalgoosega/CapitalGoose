@@ -14,6 +14,5 @@ class IntakeRequest(BaseModel):
     email: str
     loan_amount: int
     loan_type: str
-    ssn: str
     dob: str        # format: "YYYY-MM-DD"
     address: Address
