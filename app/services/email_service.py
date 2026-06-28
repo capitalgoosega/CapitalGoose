@@ -24,41 +24,35 @@ def send_email(to, subject, body):
 def send_congrats_email(to, collection_form_url):
     send_email(
         to,
-        "You're Pre-Approved — Complete Your Application",
+        " Capital Goose — You’re Pre-Approved (Next Steps Required)",
         f"""Dear Applicant,
 
-We have great news! After reviewing your application, Capitol Goose is pleased to inform you that you have been pre-approved for your loan!
+Good news — your application has passed our initial review and is pre-approved.
 
-This is a big step, and we're excited to help you move forward. To finalize your application, please complete the next stage of the process by filling out additional using the link below:
+Based on the information you submitted, you meet the preliminary criteria for financing. To move forward, we need to verify a few final details and collect supporting documentation.
 
-{collection_form_url}
+To continue your application, please upload your documents here:
+Secure Document Upload⁠
 
-Please complete this form at your earliest convenience so we can match you with the right lending partner and keep your application moving without delay.
+Once received, our team will complete final verification and match you with the best available lending options.
 
-If you have any questions or need assistance along the way, our team is always here to help.
+If you have questions, simply reply to this email.
 
-Warm regards,
-The Capitol Goose Team"""
+— Capital Goose"""
     )
 
 
-def send_decline_email(to, score):
+def send_decline_email(to):
     send_email(
         to,
         "An Update on Your Loan Application",
-        f"""Dear Applicant,
+        """Dear Applicant,
 
 Thank you for choosing Capitol Goose and for taking the time to submit your loan application. We genuinely appreciate the trust you've placed in us.
 
-After a thorough review of your application, we regret to inform you that we are unable to approve your request at this time. The primary factor in this decision was your current credit score of {score}, which fell below our minimum approval threshold.
+After a thorough review of your application, we regret to inform you that we are unable to approve your request at this time. Unfortunately, you do not meet the minimum age requirement of 18 years old to qualify for a loan with Capitol Goose.
 
-Specifically, your application was declined because: {denial_reason}
-
-We know this isn't the news you were hoping for, and we want to be as helpful as possible in getting you to where you need to be. Here is what we recommend to address this:
-
-{advice}
-
-We encourage you to reapply in 6 months. A lot can change in that time, and we would love the opportunity to work with you when you're ready.
+We encourage you to reapply once you meet the eligibility requirements.
 
 Thank you again for considering Capitol Goose. We're rooting for your success.
 
