@@ -31,6 +31,7 @@ def process_intake(db, data):
 
 
 def process_package(db, application, data):
+    from app.services.lender_service import choose_lender
     lender = choose_lender(data.loan_type)
     application.lender = lender
     application.status = "submitted"
