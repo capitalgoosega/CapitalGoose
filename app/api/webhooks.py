@@ -2,10 +2,11 @@ from fastapi import APIRouter, Request, HTTPException, Depends
 from sqlalchemy.orm import Session
 from app.db.session import get_db
 from app.models.application import Application
-from app.services.workflow_service import process_intake
+from app.services.workflow_service import process_intake, process_package
 from app.schemas.intake import IntakeRequest
 
 router = APIRouter()
+
 
 @router.post("/cognito")
 async def cognito_webhook(request: Request, db: Session = Depends(get_db)):
@@ -46,3 +47,34 @@ async def cognito_webhook(request: Request, db: Session = Depends(get_db)):
     db.commit()
 
     return {"received": True, "status": status}
+
+
+@router.post("/cognito-package")
+async def cognito_package_webhook(request: Request, db: Session = Depends(get_db)):
+
+    raw = await request.json()
+    print("PACKAGE RAW PAYLOAD:", raw)
+
+    try:
+        email = raw["Entry.EmailAddress"]
+    except KeyError as e:
+        raise HTTPException(status_code=400, detail=f"Missing field: {e}")
+
+    # look up their existing application by email
+    application = (
+        db.query(Application)
+        .filter(Application.email == email)
+        .order_by(Application.id.desc())
+        .first()
+    )
+
+    if not application:
+        raise HTTPException(status_code=404, detail="No application found for this email")
+
+    if application.status != "pre_approved":
+        raise HTTPException(status_code=400, detail="Application is not in pre_approved status")
+
+    process_package(db, application, raw)
+    db.commit()
+
+    return {"received": True, "status": "submitted"}
