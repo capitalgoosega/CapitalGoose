@@ -55,10 +55,9 @@ async def cognito_package_webhook(request: Request, db: Session = Depends(get_db
     raw = await request.json()
     print("PACKAGE RAW PAYLOAD:", raw)
 
-    try:
-        email = raw["Entry.EmailAddress"]
-    except KeyError as e:
-        raise HTTPException(status_code=400, detail=f"Missing field: {e}")
+    email = raw.get("EmailAddress") or raw.get("Entry.EmailAddress")
+    if not email:
+        raise HTTPException(status_code=400, detail="Missing email field")
 
     # look up their existing application by email
     application = (
