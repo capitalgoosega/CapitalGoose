@@ -1,22 +1,24 @@
-import os
-from sendgrid import SendGridAPIClient
-from sendgrid.helpers.mail import Mail
+import smtplib
+from email.mime.text import MIMEText
+from email.mime.multipart import MIMEMultipart
 from app.core.config import settings
+
 
 def send_email(to, subject, body):
     print(f"ATTEMPTING TO SEND EMAIL TO: {to}")
-    print(f"SENDGRID_API_KEY: {settings.sendgrid_api_key}")
-    print(f"SENDER_EMAIL: {settings.sender_email}")
     try:
-        message = Mail(
-            from_email=settings.sender_email,
-            to_emails=to,
-            subject=subject,
-            plain_text_content=body
-        )
-        sg = SendGridAPIClient(settings.sendgrid_api_key)
-        response = sg.send(message)
-        print(f"EMAIL STATUS CODE: {response.status_code}")
+        msg = MIMEMultipart()
+        msg["From"] = settings.sender_email
+        msg["To"] = to
+        msg["Subject"] = subject
+        msg.attach(MIMEText(body, "plain"))
+
+        with smtplib.SMTP_SSL("smtp.gmail.com", 465) as server:
+            server.login(settings.gmail_user, settings.gmail_app_password)
+            server.sendmail(settings.sender_email, to, msg.as_string())
+
+        print("EMAIL SENT SUCCESSFULLY")
+
     except Exception as e:
         print(f"EMAIL ERROR: {e}")
 
@@ -24,7 +26,7 @@ def send_email(to, subject, body):
 def send_congrats_email(to, collection_form_url):
     send_email(
         to,
-        " Capital Goose — You’re Pre-Approved (Next Steps Required)",
+        "Capital Goose — You're Pre-Approved (Next Steps Required)",
         f"""Dear Applicant,
 
 Good news — your application has passed our initial review and is pre-approved.
@@ -32,13 +34,14 @@ Good news — your application has passed our initial review and is pre-approved
 Based on the information you submitted, you meet the preliminary criteria for financing. To move forward, we need to verify a few final details and collect supporting documentation.
 
 To continue your application, please upload your documents here:
-Secure Document Upload⁠
+
+{collection_form_url}
 
 Once received, our team will complete final verification and match you with the best available lending options.
 
 If you have questions, simply reply to this email.
 
-— Capital Goose"""
+— Capitol Goose"""
     )
 
 
