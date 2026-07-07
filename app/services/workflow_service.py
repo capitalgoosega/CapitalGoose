@@ -32,7 +32,7 @@ def process_intake(db, data):
 
 def process_package(db, application, data):
     from app.services.lender_service import choose_lender
-    lender = choose_lender(application.loan_type)
+    lender = choose_lender(application.loan_type, 700)
     application.lender = lender
     application.status = "submitted"
     send_bank_submission_email(application.email)
