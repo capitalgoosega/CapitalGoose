@@ -4,14 +4,18 @@ from email.mime.multipart import MIMEMultipart
 from app.core.config import settings
 
 
-def send_email(to, subject, body):
+def send_email(to, subject, body, html=False):
     print(f"ATTEMPTING TO SEND EMAIL TO: {to}")
     try:
-        msg = MIMEMultipart()
+        msg = MIMEMultipart("alternative")
         msg["From"] = settings.sender_email
         msg["To"] = to
         msg["Subject"] = subject
-        msg.attach(MIMEText(body, "plain"))
+
+        if html:
+            msg.attach(MIMEText(body, "html"))
+        else:
+            msg.attach(MIMEText(body, "plain"))
 
         with smtplib.SMTP_SSL("smtp.gmail.com", 465) as server:
             server.login(settings.gmail_user, settings.gmail_app_password)
@@ -26,22 +30,44 @@ def send_email(to, subject, body):
 def send_congrats_email(to, collection_form_url):
     send_email(
         to,
-        "Capital Goose — You're Pre-Approved (Next Steps Required)",
-        f"""Dear Applicant,
-
-Good news — your application has passed our initial review and is pre-approved.
-
-Based on the information you submitted, you meet the preliminary criteria for financing. To move forward, we need to verify a few final details and collect supporting documentation.
-
-To continue your application, please upload your documents here:
-
-{collection_form_url}
-
-Once received, our team will complete final verification and match you with the best available lending options.
-
-If you have questions, simply reply to this email.
-
-— Capitol Goose"""
+        "Capital Goose — You're Pre-Qualified (Next Steps Required)",
+        f"""<!DOCTYPE html>
+<html>
+<body style="font-family: Arial, sans-serif; color: #222; line-height: 1.6; font-size: 16px;">
+  <p>Dear Applicant,</p>
+  <p>Thank you for submitting your application with <strong>Capital Goose</strong>.</p>
+  <p>
+    Based on the information you provided, your application has met our initial
+    qualification criteria and is eligible to move to the next stage of our review process.
+  </p>
+  <p>
+    To continue, we need to verify your information and collect a few supporting
+    documents required by our lending partners.
+  </p>
+  <p>Please securely upload your requested documents here:</p>
+  <p>
+    <a href="{collection_form_url}"
+       style="color: #0b57d0; font-weight: bold;">
+      Secure Document Upload
+    </a>
+  </p>
+  <p>
+    Once we receive your documentation, our team will complete the verification process
+    and match your application with the most appropriate lending opportunities available.
+  </p>
+  <p>
+    <strong>Please note:</strong> Meeting our initial qualification criteria is not a loan
+    approval or commitment to lend. Final lending decisions are made after document
+    verification and lender underwriting.
+  </p>
+  <p>If you have any questions, simply reply to this email — we're happy to help.</p>
+  <p>
+    Thank you,<br>
+    The Capital Goose Team
+  </p>
+</body>
+</html>""",
+        html=True
     )
 
 
