@@ -28,10 +28,16 @@ def send_email(to, subject, body, html=False):
 
 
 def send_congrats_email(to, collection_form_url):
-    send_email(
-        to,
-        "Capital Goose — You're Pre-Qualified (Next Steps Required)",
-        f"""<!DOCTYPE html>
+    print(f"ATTEMPTING TO SEND EMAIL TO: {to}")
+    try:
+        msg = MIMEMultipart("alternative")
+        msg["From"] = settings.sender_email
+        msg["To"] = to
+        msg["Subject"] = "Capital Goose — You're Pre-Qualified (Next Steps Required)"
+
+        plain = f"Please upload your documents here: {collection_form_url}"
+
+        html = f"""<!DOCTYPE html>
 <html>
 <body style="font-family: Arial, sans-serif; color: #222; line-height: 1.6; font-size: 16px;">
   <p>Dear Applicant,</p>
@@ -66,9 +72,19 @@ def send_congrats_email(to, collection_form_url):
     The Capital Goose Team
   </p>
 </body>
-</html>""",
-        html=True
-    )
+</html>"""
+
+        msg.attach(MIMEText(plain, "plain"))
+        msg.attach(MIMEText(html, "html"))
+
+        with smtplib.SMTP_SSL("smtp.gmail.com", 465) as server:
+            server.login(settings.gmail_user, settings.gmail_app_password)
+            server.sendmail(settings.sender_email, to, msg.as_string())
+
+        print("EMAIL SENT SUCCESSFULLY")
+
+    except Exception as e:
+        print(f"EMAIL ERROR: {e}")
 
 
 def send_decline_email(to):
@@ -105,5 +121,5 @@ We want to take a moment to sincerely thank you for choosing Capitol Goose Finte
 If you have any questions while you wait or need to update any information, please don't hesitate to reach out to us directly. We're always happy to help.
 
 Warm regards,
-The Capitol Goose Team"""
+The Capitol Goose Fintech Team"""
     )
