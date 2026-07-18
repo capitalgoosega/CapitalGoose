@@ -5,6 +5,7 @@ class Application(Base):
     __tablename__ = "applications"
 
     id = Column(Integer, primary_key=True, index=True)
+    source_entry_id = Column(String, unique=True, index=True, nullable=True)
     name = Column(String)
     email = Column(String)
     loan_amount = Column(Integer)
