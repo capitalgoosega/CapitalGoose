@@ -1,71 +1,108 @@
-import os
-from sendgrid import SendGridAPIClient
-from sendgrid.helpers.mail import Mail
+import smtplib
+from email.mime.text import MIMEText
+from email.mime.multipart import MIMEMultipart
 from app.core.config import settings
 
-def send_email(to, subject, body):
+
+def send_email(to, subject, body, html=False):
     print(f"ATTEMPTING TO SEND EMAIL TO: {to}")
-    print(f"SENDGRID_API_KEY: {settings.sendgrid_api_key}")
-    print(f"SENDER_EMAIL: {settings.sender_email}")
     try:
-        message = Mail(
-            from_email=settings.sender_email,
-            to_emails=to,
-            subject=subject,
-            plain_text_content=body
-        )
-        sg = SendGridAPIClient(settings.sendgrid_api_key)
-        response = sg.send(message)
-        print(f"EMAIL STATUS CODE: {response.status_code}")
+        msg = MIMEMultipart("alternative")
+        msg["From"] = settings.sender_email
+        msg["To"] = to
+        msg["Subject"] = subject
+
+        if html:
+            msg.attach(MIMEText(body, "html"))
+        else:
+            msg.attach(MIMEText(body, "plain"))
+
+        with smtplib.SMTP_SSL("smtp.gmail.com", 465) as server:
+            server.login(settings.gmail_user, settings.gmail_app_password)
+            server.sendmail(settings.sender_email, to, msg.as_string())
+
+        print("EMAIL SENT SUCCESSFULLY")
+
     except Exception as e:
         print(f"EMAIL ERROR: {e}")
 
 
 def send_congrats_email(to, collection_form_url):
-    send_email(
-        to,
-        "You're Pre-Approved — Complete Your Application",
-        f"""Dear Applicant,
+    print(f"ATTEMPTING TO SEND EMAIL TO: {to}")
+    try:
+        msg = MIMEMultipart("alternative")
+        msg["From"] = settings.sender_email
+        msg["To"] = to
+        msg["Subject"] = "Capital Goose — You're Pre-Qualified (Next Steps Required)"
 
-We have great news! After reviewing your application, Capitol Goose is pleased to inform you that you have been pre-approved for your loan!
+        plain = f"Please upload your documents here: {collection_form_url}"
 
-This is a big step, and we're excited to help you move forward. To finalize your application, please complete the next stage of the process by filling out additional using the link below:
+        html = f"""<!DOCTYPE html>
+<html>
+<body style="font-family: Arial, sans-serif; color: #222; line-height: 1.6; font-size: 16px;">
+  <p>Dear Applicant,</p>
+  <p>Thank you for submitting your application with <strong>Capital Goose</strong>.</p>
+  <p>
+    Based on the information you provided, your application has met our initial
+    qualification criteria and is eligible to move to the next stage of our review process.
+  </p>
+  <p>
+    To continue, we need to verify your information and collect a few supporting
+    documents required by our lending partners.
+  </p>
+  <p>Please securely upload your requested documents here:</p>
+  <p>
+    <a href="{collection_form_url}"
+       style="color: #0b57d0; font-weight: bold;">
+      Secure Document Upload
+    </a>
+  </p>
+  <p>
+    Once we receive your documentation, our team will complete the verification process
+    and match your application with the most appropriate lending opportunities available.
+  </p>
+  <p>
+    <strong>Please note:</strong> Meeting our initial qualification criteria is not a loan
+    approval or commitment to lend. Final lending decisions are made after document
+    verification and lender underwriting.
+  </p>
+  <p>If you have any questions, simply reply to this email — we're happy to help.</p>
+  <p>
+    Thank you,<br>
+    The Capital Goose Team
+  </p>
+</body>
+</html>"""
 
-{collection_form_url}
+        msg.attach(MIMEText(plain, "plain"))
+        msg.attach(MIMEText(html, "html"))
 
-Please complete this form at your earliest convenience so we can match you with the right lending partner and keep your application moving without delay.
+        with smtplib.SMTP_SSL("smtp.gmail.com", 465) as server:
+            server.login(settings.gmail_user, settings.gmail_app_password)
+            server.sendmail(settings.sender_email, to, msg.as_string())
 
-If you have any questions or need assistance along the way, our team is always here to help.
+        print("EMAIL SENT SUCCESSFULLY")
 
-Warm regards,
-The Capitol Goose Fintech Team"""
-    )
+    except Exception as e:
+        print(f"EMAIL ERROR: {e}")
 
 
-def send_decline_email(to, score):
+def send_decline_email(to):
     send_email(
         to,
         "An Update on Your Loan Application",
-        f"""Dear Applicant,
+        """Dear Applicant,
 
-Thank you for choosing Capitol Goose Fintech and for taking the time to submit your loan application. We genuinely appreciate the trust you've placed in us.
+Thank you for choosing Capitol Goose and for taking the time to submit your loan application. We genuinely appreciate the trust you've placed in us.
 
-After a thorough review of your application, we regret to inform you that we are unable to approve your request at this time. The primary factor in this decision was your current credit score of {score}, which fell below our minimum approval threshold.
+After a thorough review of your application, we regret to inform you that we are unable to approve your request at this time. Unfortunately, you do not meet the minimum age requirement of 18 years old to qualify for a loan with Capitol Goose.
 
-We know this isn't the news you were hoping for, and we want to be as helpful as possible in getting you to where you need to be. Here are some steps you can take to strengthen your application before reapplying:
+We encourage you to reapply once you meet the eligibility requirements.
 
-  - Focus on paying down existing balances to lower your credit utilization
-  - Make sure all bills, loans, and obligations are paid on time going forward
-  - Avoid applying for new lines of credit in the near future
-  - Review your credit report for any errors or inaccuracies and dispute them promptly
-  - Give your credit profile at least 6 months to reflect these improvements
-
-We encourage you to reapply in 6 months. A lot can change in that time, and we would love the opportunity to work with you when you're ready.
-
-Thank you again for considering Capitol Goose Fintech. We're rooting for your success.
+Thank you again for considering Capitol Goose. We're rooting for your success.
 
 Sincerely,
-The Capitol Goose Fintech Team"""
+The Capitol Goose Team"""
     )
 
 
