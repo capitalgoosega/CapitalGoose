@@ -9,6 +9,7 @@ from app.services.audit_service import log_event
 
 COLLECTION_FORM_URL = "https://www.cognitoforms.com/capitalgoose1/documentuploadform"
 
+
 def process_intake(db, data):
     # STEP 1 - AGE VERIFICATION
     is_eligible = verify_age(data.dob)
