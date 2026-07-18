@@ -12,7 +12,7 @@ router = APIRouter()
 async def cognito_webhook(request: Request, db: Session = Depends(get_db)):
 
     raw = await request.json()
-    print("RAW PAYLOAD:", raw)
+    
 
     try:
         intake_data = IntakeRequest(
@@ -53,7 +53,7 @@ async def cognito_webhook(request: Request, db: Session = Depends(get_db)):
 async def cognito_package_webhook(request: Request, db: Session = Depends(get_db)):
 
     raw = await request.json()
-    print("PACKAGE RAW PAYLOAD:", raw)
+    
 
     email = raw.get("EmailAddress") or raw.get("Entry.EmailAddress")
     if not email:
