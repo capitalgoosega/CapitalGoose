@@ -30,7 +30,7 @@ async def cognito_webhook(request: Request, db: Session = Depends(get_db)):
             }
         )
     except KeyError as e:
-        print("RAW PAYLOAD DUMP:", raw)
+        
         raise HTTPException(status_code=400, detail=f"Missing field from Cognito: {e}")
 
     status = process_intake(db, intake_data)
