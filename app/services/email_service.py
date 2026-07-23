@@ -17,7 +17,8 @@ def send_email(to, subject, body, html=False):
         else:
             msg.attach(MIMEText(body, "plain"))
 
-        with smtplib.SMTP_SSL("smtp.gmail.com", 465) as server:
+        with smtplib.SMTP("smtp.gmail.com", 587) as server:
+            server.starttls()
             server.login(settings.gmail_user, settings.gmail_app_password)
             server.sendmail(settings.sender_email, to, msg.as_string())
 
@@ -77,7 +78,8 @@ def send_congrats_email(to, collection_form_url):
         msg.attach(MIMEText(plain, "plain"))
         msg.attach(MIMEText(html, "html"))
 
-        with smtplib.SMTP_SSL("smtp.gmail.com", 465) as server:
+        with smtplib.SMTP("smtp.gmail.com", 587) as server:
+            server.starttls()
             server.login(settings.gmail_user, settings.gmail_app_password)
             server.sendmail(settings.sender_email, to, msg.as_string())
 
@@ -121,5 +123,5 @@ We want to take a moment to sincerely thank you for choosing Capitol Goose Finte
 If you have any questions while you wait or need to update any information, please don't hesitate to reach out to us directly. We're always happy to help.
 
 Warm regards,
-The Capitol Goose Fintech Team"""
+The Capitol Goose Team"""
     )
