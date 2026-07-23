@@ -3,6 +3,7 @@ import hmac
 import logging
 import os
 import uuid
+from fastapi import BackgroundTasks
 from fastapi import APIRouter, Request, HTTPException, Depends, Header
 from sqlalchemy.orm import Session
 from sqlalchemy.exc import IntegrityError
@@ -87,6 +88,7 @@ async def cognito_package_webhook(request: Request, db: Session = Depends(get_db
 @router.post("/zapier-application")
 async def zapier_application_webhook(
     request: Request,
+    background_tasks: BackgroundTasks,
     db: Session = Depends(get_db),
     x_capital_goose_webhook_key: str = Header(None),
 ):
@@ -156,3 +158,4 @@ async def zapier_application_webhook(
     logger.info("zapier webhook completed request_id=%s application_id=%s status=%s", request_id, app_record.id, status)
 
     return {"status": "success", "request_id": request_id, "application_id": app_record.id, "decision": status}
+
