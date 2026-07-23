@@ -156,4 +156,3 @@ async def zapier_application_webhook(
     logger.info("zapier webhook completed request_id=%s application_id=%s status=%s", request_id, app_record.id, status)
 
     return {"status": "success", "request_id": request_id, "application_id": app_record.id, "decision": status}
-
