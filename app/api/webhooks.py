@@ -92,6 +92,11 @@ async def zapier_application_webhook(
 ):
     request_id = str(uuid.uuid4())
 
+    received_key = x_capital_goose_webhook_key or ""
+    logger.warning(
+        "zapier webhook key check request_id=%s received_len=%d expected_len=%d received_last4=%s expected_last4=%s",
+        request_id, len(received_key), len(WEBHOOK_SECRET), received_key[-4:], WEBHOOK_SECRET[-4:]
+    )
     if not x_capital_goose_webhook_key or not hmac.compare_digest(
         x_capital_goose_webhook_key, WEBHOOK_SECRET
     ):
