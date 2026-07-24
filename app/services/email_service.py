@@ -1,27 +1,30 @@
-import smtplib
-from email.mime.text import MIMEText
-from email.mime.multipart import MIMEMultipart
+import requests
 from app.core.config import settings
+
+RESEND_API_URL = "https://api.resend.com/emails"
+FROM_ADDRESS = "Capital Goose <noreply@capitalgoose.com>"
 
 
 def send_email(to, subject, body, html=False):
     print(f"ATTEMPTING TO SEND EMAIL TO: {to}")
     try:
-        msg = MIMEMultipart("alternative")
-        msg["From"] = settings.sender_email
-        msg["To"] = to
-        msg["Subject"] = subject
-
+        payload = {
+            "from": FROM_ADDRESS,
+            "to": [to],
+            "subject": subject,
+        }
         if html:
-            msg.attach(MIMEText(body, "html"))
+            payload["html"] = body
         else:
-            msg.attach(MIMEText(body, "plain"))
+            payload["text"] = body
 
-        with smtplib.SMTP("smtp.gmail.com", 587) as server:
-            server.starttls()
-            server.login(settings.gmail_user, settings.gmail_app_password)
-            server.sendmail(settings.sender_email, to, msg.as_string())
-
+        response = requests.post(
+            RESEND_API_URL,
+            headers={"Authorization": f"Bearer {settings.resend_api_key}"},
+            json=payload,
+            timeout=10,
+        )
+        response.raise_for_status()
         print("EMAIL SENT SUCCESSFULLY")
 
     except Exception as e:
@@ -31,13 +34,6 @@ def send_email(to, subject, body, html=False):
 def send_congrats_email(to, collection_form_url):
     print(f"ATTEMPTING TO SEND EMAIL TO: {to}")
     try:
-        msg = MIMEMultipart("alternative")
-        msg["From"] = settings.sender_email
-        msg["To"] = to
-        msg["Subject"] = "Capital Goose — You're Pre-Qualified (Next Steps Required)"
-
-        plain = f"Please upload your documents here: {collection_form_url}"
-
         html = f"""<!DOCTYPE html>
 <html>
 <body style="font-family: Arial, sans-serif; color: #222; line-height: 1.6; font-size: 16px;">
@@ -75,14 +71,18 @@ def send_congrats_email(to, collection_form_url):
 </body>
 </html>"""
 
-        msg.attach(MIMEText(plain, "plain"))
-        msg.attach(MIMEText(html, "html"))
-
-        with smtplib.SMTP("smtp.gmail.com", 587) as server:
-            server.starttls()
-            server.login(settings.gmail_user, settings.gmail_app_password)
-            server.sendmail(settings.sender_email, to, msg.as_string())
-
+        response = requests.post(
+            RESEND_API_URL,
+            headers={"Authorization": f"Bearer {settings.resend_api_key}"},
+            json={
+                "from": FROM_ADDRESS,
+                "to": [to],
+                "subject": "Capital Goose — You're Pre-Qualified (Next Steps Required)",
+                "html": html,
+            },
+            timeout=10,
+        )
+        response.raise_for_status()
         print("EMAIL SENT SUCCESSFULLY")
 
     except Exception as e:
