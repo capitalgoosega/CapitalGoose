@@ -5,6 +5,7 @@ class Settings(BaseSettings):
     gmail_user: str = ""
     gmail_app_password: str = ""
     sender_email: str = ""
+    resend_api_key: str = ""
 
     class Config:
         env_file = ".env"
