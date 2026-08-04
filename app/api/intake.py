@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 from app.db.session import get_db
 from app.schemas.intake import IntakeRequest
@@ -9,7 +9,10 @@ router = APIRouter()
 
 @router.post("/")
 def submit_intake(data: IntakeRequest, db: Session = Depends(get_db)):
-    status = process_intake(db, data)
+    try:
+        status = process_intake(db, data)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
 
     application = Application(
         name=f"{data.first_name} {data.last_name}",
@@ -18,11 +21,9 @@ def submit_intake(data: IntakeRequest, db: Session = Depends(get_db)):
         loan_type=data.loan_type,
         status=status
     )
-
     db.add(application)
     db.commit()
     db.refresh(application)
-
     return {
         "application_id": application.id,
         "status": application.status,
