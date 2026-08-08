@@ -1,32 +1,59 @@
+import base64
 import requests
+from email.mime.text import MIMEText
+from email.mime.multipart import MIMEMultipart
 from app.core.config import settings
 
-RESEND_API_URL = "https://api.resend.com/emails"
-FROM_ADDRESS = "Capital Goose <noreply@capitalgoose.com>"
+GMAIL_TOKEN_URL = "https://oauth2.googleapis.com/token"
+GMAIL_SEND_URL = "https://www.googleapis.com/gmail/v1/users/me/messages/send"
+
+
+def _get_access_token():
+    response = requests.post(
+        GMAIL_TOKEN_URL,
+        data={
+            "client_id": settings.gmail_client_id,
+            "client_secret": settings.gmail_client_secret,
+            "refresh_token": settings.gmail_refresh_token,
+            "grant_type": "refresh_token",
+        },
+        timeout=10,
+    )
+    response.raise_for_status()
+    return response.json()["access_token"]
+
+
+def _send_via_gmail_api(to, subject, body, html=False):
+    access_token = _get_access_token()
+
+    message = MIMEMultipart("alternative")
+    message["to"] = to
+    message["subject"] = subject
+
+    if html:
+        message.attach(MIMEText(body, "html"))
+    else:
+        message.attach(MIMEText(body, "plain"))
+
+    raw = base64.urlsafe_b64encode(message.as_bytes()).decode()
+
+    response = requests.post(
+        GMAIL_SEND_URL,
+        headers={
+            "Authorization": f"Bearer {access_token}",
+            "Content-Type": "application/json",
+        },
+        json={"raw": raw},
+        timeout=10,
+    )
+    response.raise_for_status()
 
 
 def send_email(to, subject, body, html=False):
     print(f"ATTEMPTING TO SEND EMAIL TO: {to}")
     try:
-        payload = {
-            "from": FROM_ADDRESS,
-            "to": [to],
-            "subject": subject,
-        }
-        if html:
-            payload["html"] = body
-        else:
-            payload["text"] = body
-
-        response = requests.post(
-            RESEND_API_URL,
-            headers={"Authorization": f"Bearer {settings.resend_api_key}"},
-            json=payload,
-            timeout=10,
-        )
-        response.raise_for_status()
+        _send_via_gmail_api(to, subject, body, html=html)
         print("EMAIL SENT SUCCESSFULLY")
-
     except Exception as e:
         print(f"EMAIL ERROR: {e}")
 
@@ -71,18 +98,12 @@ def send_congrats_email(to, collection_form_url):
 </body>
 </html>"""
 
-        response = requests.post(
-            RESEND_API_URL,
-            headers={"Authorization": f"Bearer {settings.resend_api_key}"},
-            json={
-                "from": FROM_ADDRESS,
-                "to": [to],
-                "subject": "Capital Goose — You're Pre-Qualified (Next Steps Required)",
-                "html": html,
-            },
-            timeout=10,
+        _send_via_gmail_api(
+            to,
+            "Capital Goose — You're Pre-Qualified (Next Steps Required)",
+            html,
+            html=True,
         )
-        response.raise_for_status()
         print("EMAIL SENT SUCCESSFULLY")
 
     except Exception as e:
