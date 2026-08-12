@@ -25,7 +25,7 @@ class DocumentAccessGrant(Base):
   access_count = Column(Integer, default=0)
   last_accessed_at = Column(DateTime(timezone=True), nullable=True)
 
-@staticmethod
-def default_expiry(days: int = 7) -> datetime:
-  return datetime.now(timezone.utc) + timedelta(days=days)
-  
+
+  @staticmethod
+  def default_expiry(days: int = 7) -> datetime:
+    return datetime.now(timezone.utc) + timedelta(days=days)
