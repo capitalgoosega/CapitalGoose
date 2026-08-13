@@ -46,7 +46,7 @@ def process_package(db, application, data):
             elif isinstance(value, dict) and str(value.get("Url", "")).startswith("http"):
                 document_urls[key] = value["Url"]
     if document_urls:
-        ingest_application_documents(application.id, document_urls)
+                ingest_application_documents(db, application.id, document_urls)
     lender_contacts = json.loads(os.environ.get("LENDER_CONTACT_EMAILS", "{}"))
     bank_email = lender_contacts.get(lender)
     if bank_email:
