@@ -37,10 +37,10 @@ def view_documents(code: str, db: Session = Depends(get_db)):
                                     raise HTTPException(status_code=404, detail="This link is invalid, revoked, or has expired.")
         docs = vault.list_documents(db, grant.application_id)
     if not docs:
-                        rows = "<p>No documents are available for this application yet.</p>"
+                rows = "<p>No documents are available for this application yet.</p>"
     else:
         rows = "<ul>" + "".join(
-            f'<li><a href="/vault/{code}/download/{d.id}">{d.filename}</a></li>'
+    f'<li><a href="/vault/{code}/download/{d.id}">{d.filename}</a></li>'
             for d in docs
         ) + "</ul>"
     html = (
