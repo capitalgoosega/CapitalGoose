@@ -35,7 +35,7 @@ def view_documents(code: str, db: Session = Depends(get_db)):
         grant = vault.validate_and_load_grant(db, code)
         if not grant:
                                     raise HTTPException(status_code=404, detail="This link is invalid, revoked, or has expired.")
-        docs = vault.list_documents(db, grant.application_id)
+    docs = vault.list_documents(db, grant.application_id)  
     if not docs:
                 rows = "<p>No documents are available for this application yet.</p>"
     else:
