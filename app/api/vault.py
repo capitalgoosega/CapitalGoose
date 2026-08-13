@@ -1,7 +1,6 @@
 from typing import Optional
-
 from fastapi import APIRouter, Depends, HTTPException
-# deploy
+# deploy v2
 from fastapi.responses import HTMLResponse, Response
 from pydantic import BaseModel, EmailStr
 from sqlalchemy.orm import Session
