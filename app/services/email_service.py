@@ -146,3 +146,17 @@ If you have any questions while you wait or need to update any information, plea
 Warm regards,
 The Capitol Goose Team"""
     )
+
+def send_bank_document_access_email(recipient_email, recipient_label, code, applicant_name):
+access_url = f"https://capitalgoose-production.up.railway.app/vault/{code}"
+body = (
+f"Hi {recipient_label or ''},\n\n"
+f"Documents for {applicant_name}'s application are ready for your review.\n\n"
+f"Access link: {access_url}\n"
+f"Access code: {code}\n\n"
+"This link expires in 7 days. Please do not forward this email - "
+"it grants access to sensitive applicant information.\n\n"
+"- Capitol Goose"
+
+)
+send_email(recipient_email, f"Documents ready for review - {applicant_name}", body)
