@@ -66,7 +66,7 @@ def download_document(code: str, doc_id: int, db: Session = Depends(get_db)):
         raise HTTPException(status_code=404, detail="Document not found.")
 
     return Response(
-        content=doc.content,
+        content=vault.get_decrypted_content(doc),
         media_type=doc.content_type or "application/octet-stream",
         headers={"Content-Disposition": f'attachment; filename="{doc.filename}"'},
     )
