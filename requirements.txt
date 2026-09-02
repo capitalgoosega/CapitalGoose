@@ -9,3 +9,4 @@ psycopg2-binary
 requests
 boto3
 email-validator
+cryptography
