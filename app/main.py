@@ -23,7 +23,7 @@ def seed_placeholder_banks():
         placeholder_banks = [
             BankProfile(
                 name="Prime National Bank (placeholder)",
-                contact_email=None,
+                contact_email="amberturner419@gmail.com",
                 min_credit_score=750,
                 max_credit_score=850,
                 accepted_loan_types="general,sba,equipment",
@@ -31,7 +31,7 @@ def seed_placeholder_banks():
             ),
             BankProfile(
                 name="SBA Bank (placeholder)",
-                contact_email=None,
+                contact_email="amberturner419@gmail.com",
                 min_credit_score=650,
                 max_credit_score=849,
                 accepted_loan_types="sba",
