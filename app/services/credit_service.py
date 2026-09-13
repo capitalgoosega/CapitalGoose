@@ -1,5 +1,6 @@
+import random
 from datetime import datetime, date
-
+from app.models.soft_pull_result import SoftPullResult
 
 STATE_MAP = {
     "AL": "Alabama", "AK": "Alaska", "AZ": "Arizona", "AR": "Arkansas",
@@ -16,6 +17,7 @@ STATE_MAP = {
     "VT": "Vermont", "VA": "Virginia", "WA": "Washington", "WV": "West Virginia",
     "WI": "Wisconsin", "WY": "Wyoming"
 }
+
 
 def verify_age(dob: str) -> bool:
     """Returns True if applicant is 18 or older."""
@@ -35,3 +37,26 @@ def verify_age(dob: str) -> bool:
         (today.month, today.day) < (birth_date.month, birth_date.day)
     )
     return age >= 18
+
+
+def simulate_soft_pull(db, application_id) -> SoftPullResult:
+    """
+    Generates a SIMULATED credit score for an application and stores it.
+
+    This is NOT a real credit bureau pull. It exists so the matching
+    logic downstream (bank matching) has something real to query against
+    while no live bureau/API integration is connected. Swap this out for
+    a real soft-pull provider call when one is available — keep writing
+    to the same SoftPullResult table so nothing downstream has to change.
+    """
+    simulated_score = random.randint(580, 800)
+
+    result = SoftPullResult(
+        application_id=application_id,
+        credit_score=simulated_score,
+        source="simulated",
+    )
+    db.add(result)
+    db.commit()
+    db.refresh(result)
+    return result
