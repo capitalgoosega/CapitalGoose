@@ -1,10 +1,22 @@
 from fastapi import FastAPI
+from sqlalchemy import text
 
 from app.api.routes import router
 
 from app.db.session import Base, engine, SessionLocal
 from app.models.bank_profile import BankProfile
 
+
+# bank_profiles previously existed with an older schema (before
+# geographic_scope, verified, cash_flow_requirement, etc. were added).
+# create_all() only creates NEW tables — it never alters existing
+# ones — so this table must be dropped once here to pick up the new
+# columns. Safe to drop: nothing else references bank_profiles by
+# foreign key, and its contents are just reference/seed data, not
+# user history.
+with engine.connect() as conn:
+    conn.execute(text("DROP TABLE IF EXISTS bank_profiles"))
+    conn.commit()
 
 Base.metadata.create_all(bind=engine)
 
