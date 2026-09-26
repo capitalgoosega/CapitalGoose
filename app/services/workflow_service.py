@@ -36,12 +36,19 @@ def process_package(db, application, data):
     soft_pull = simulate_soft_pull(db, application.id)
     log_event(db, f"Soft pull completed for application {application.id} (simulated) — score {soft_pull.credit_score}")
 
-    matched_bank = choose_lender(db, application.loan_type, soft_pull.credit_score)
+    applicant_state = None
+    if isinstance(data, dict):
+        applicant_state = data.get("BusinessOperatingState") or data.get("Entry.BusinessOperatingState")
+
+    if not applicant_state:
+        log_event(db, f"No business operating state provided for application {application.id} — geographic matching limited to nationwide banks only")
+
+    matched_bank = choose_lender(db, soft_pull.credit_score, applicant_state)
 
     if not matched_bank:
         application.status = "no_lender_match"
         db.commit()
-        log_event(db, f"No lender match found for application {application.id} — score {soft_pull.credit_score}, loan_type {application.loan_type}")
+        log_event(db, f"No lender match found for application {application.id} — score {soft_pull.credit_score}, state {applicant_state}")
         return
 
     application.lender = matched_bank.name
