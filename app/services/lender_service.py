@@ -1,18 +1,23 @@
 from app.models.bank_profile import BankProfile
 
 
-def choose_lender(db, loan_type: str, credit_score: int):
+def choose_lender(db, credit_score: int, applicant_state: str = None):
     """
-    Queries BankProfile for an active bank that accepts this loan_type
-    and whose credit score range includes the applicant's score.
+    Queries BankProfile for an active bank whose credit score range
+    includes the applicant's score AND whose geographic scope covers
+    the applicant's business state.
 
     Returns the matched BankProfile, or None if no bank matches.
 
+    NOTE: matching is currently credit score + geography only.
+    Cash flow (DSCR), PFS, and years-in-business requirements from the
+    mapping table are stored on BankProfile for reference but are NOT
+    enforced here, since Cognito Forms doesn't yet collect the
+    structured data needed to check them automatically.
+
     Selection when multiple banks qualify: picks the one with the
-    highest min_credit_score that the applicant still clears — i.e.
-    the best-fit tier, not just the first match. Replace this
-    tie-breaking rule if you want different matching priorities
-    (e.g. by loan amount capacity) once real bank data is in place.
+    highest min_credit_score the applicant still clears (best-fit
+    tier). Ties broken alphabetically by name for determinism.
     """
     candidates = (
         db.query(BankProfile)
@@ -22,9 +27,9 @@ def choose_lender(db, loan_type: str, credit_score: int):
         .all()
     )
 
-    matches = [b for b in candidates if b.accepts_loan_type(loan_type)]
+    matches = [b for b in candidates if b.accepts_state(applicant_state)]
 
     if not matches:
         return None
 
-    return max(matches, key=lambda b: b.min_credit_score)
+    return sorted(matches, key=lambda b: (-b.min_credit_score, b.name))[0]
