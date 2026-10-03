@@ -10,7 +10,8 @@ from app.services.auth_service import hash_password
 
 
 with engine.connect() as conn:
-    conn.execute(text("DROP TABLE IF EXISTS bank_profiles"))
+    conn.execute(text("DROP TABLE IF EXISTS bank_users CASCADE"))
+    conn.execute(text("DROP TABLE IF EXISTS bank_profiles CASCADE"))
     conn.commit()
 
 with engine.connect() as conn:
