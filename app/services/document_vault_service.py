@@ -56,6 +56,7 @@ def create_access_grant(db: Session, application_id, recipient_email, recipient_
         code=generate_access_code(),
         recipient_email=recipient_email,
         recipient_label=recipient_label,
+        bsnk_profile_id=bank_profile_id,
         expires_at=DocumentAccessGrant.default_expiry(ACCESS_GRANT_TTL_DAYS),
     )
     db.add(grant)
