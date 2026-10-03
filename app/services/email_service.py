@@ -148,7 +148,7 @@ The Capitol Goose Team"""
     )
 
 def send_bank_document_access_email(recipient_email, recipient_label, code, applicant_name):
-    access_url = f"https://capitalgoose-production.up.railway.app/vault/{code}"
+    access_url = f"https://capitalgoose-production.up.railway.app/bank-portal/access?code={code}"
     body = (
     f"Hi {recipient_label or ''},\n\n"
     f"Documents for {applicant_name}'s application are ready for your review.\n\n"
