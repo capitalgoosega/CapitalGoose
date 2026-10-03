@@ -66,7 +66,7 @@ def process_package(db, application, data):
         ingest_application_documents(db, application.id, document_urls)
 
     if matched_bank.contact_email:
-        grant = create_access_grant(db, application.id, matched_bank.contact_email, recipient_label=matched_bank.name)
+        grant = create_access_grant(db, application.id, matched_bank.contact_email, recipient_label=matched_bank.name, bank_profile_id=matched_bank.id)
         send_bank_document_access_email(matched_bank.contact_email, matched_bank.name, grant.code, application.name)
     else:
         log_event(db, f"No contact email configured for lender '{matched_bank.name}' - access grant not created")
