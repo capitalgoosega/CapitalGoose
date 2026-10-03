@@ -28,6 +28,15 @@ def get_authenticated_bank(authorization: str = Header(None)):
     return payload
 
 
+def _load_authorized_grant(code: str, db: Session, bank: dict):
+    grant = vault.validate_and_load_grant(db, code)
+    if not grant:
+        raise HTTPException(status_code=404, detail="This link is invalid, revoked, or has expired.")
+    if grant.bank_profile_id != bank["bank_profile_id"]:
+        raise HTTPException(status_code=403, detail="This access code is not assigned to your institution.")
+    return grant
+
+
 @router.post("/access-grants", tags=["vault"])
 def create_access_grant(payload: CreateAccessGrantRequest, db: Session = Depends(get_db)):
     grant = vault.create_access_grant(
@@ -43,14 +52,16 @@ def create_access_grant(payload: CreateAccessGrantRequest, db: Session = Depends
     }
 
 
+@router.get("/{code}/documents", tags=["vault"])
+def list_documents_json(code: str, db: Session = Depends(get_db), bank=Depends(get_authenticated_bank)):
+    grant = _load_authorized_grant(code, db, bank)
+    docs = vault.list_documents(db, grant.application_id)
+    return {"documents": [{"id": d.id, "filename": d.filename} for d in docs]}
+
+
 @router.get("/{code}", response_class=HTMLResponse, tags=["vault"])
 def view_documents(code: str, db: Session = Depends(get_db), bank=Depends(get_authenticated_bank)):
-    grant = vault.validate_and_load_grant(db, code)
-    if not grant:
-        raise HTTPException(status_code=404, detail="This link is invalid, revoked, or has expired.")
-
-    if grant.bank_profile_id != bank["bank_profile_id"]:
-        raise HTTPException(status_code=403, detail="This access code is not assigned to your institution.")
+    grant = _load_authorized_grant(code, db, bank)
 
     docs = vault.list_documents(db, grant.application_id)
     if not docs:
@@ -73,12 +84,7 @@ def view_documents(code: str, db: Session = Depends(get_db), bank=Depends(get_au
 
 @router.get("/{code}/download/{doc_id}", tags=["vault"])
 def download_document(code: str, doc_id: int, db: Session = Depends(get_db), bank=Depends(get_authenticated_bank)):
-    grant = vault.validate_and_load_grant(db, code)
-    if not grant:
-        raise HTTPException(status_code=404, detail="This link is invalid, revoked, or has expired.")
-
-    if grant.bank_profile_id != bank["bank_profile_id"]:
-        raise HTTPException(status_code=403, detail="This access code is not assigned to your institution.")
+    grant = _load_authorized_grant(code, db, bank)
 
     doc = vault.get_document(db, doc_id)
     if not doc or doc.application_id != grant.application_id:
