@@ -1,4 +1,4 @@
-import mimetypes
+  import mimetypes
 import os
 from datetime import datetime, timezone
 
@@ -6,6 +6,9 @@ import requests
 from sqlalchemy.orm import Session
 
 from app.models.access_code import DocumentAccessGrant, generate_access_code
+from app.models.access_log import DocumentAccessLog
+from app.models.bank_profile import BankProfile
+from app.models.bank_user import BankUser
 from app.models.document_blob import DocumentBlob
 from app.services.crypto_service import encrypt_bytes, decrypt_bytes
 
@@ -84,3 +87,27 @@ def revoke_grant(db: Session, code: str) -> bool:
     grant.revoked = True
     db.commit()
     return True
+
+
+def log_document_access(db: Session, grant, bank: dict, action: str, doc=None):
+    """Records one audit-trail entry. `bank` is the verified login token payload."""
+    user = db.query(BankUser).filter(BankUser.id == bank.get("bank_user_id")).first()
+    profile = db.query(BankProfile).filter(BankProfile.id == bank.get("bank_profile_id")).first()
+
+    db.add(DocumentAccessLog(
+        application_id=grant.application_id,
+        grant_id=grant.id,
+        bank_name=profile.name if profile else None,
+        bank_user_email=user.email if user else None,
+        action=action,
+        document_id=doc.id if doc else None,
+        filename=doc.filename if doc else None,
+    ))
+    db.commit()
+
+
+def list_access_log(db: Session, application_id=None, limit: int = 200):
+    query = db.query(DocumentAccessLog)
+    if application_id is not None:
+        query = query.filter(DocumentAccessLog.application_id == application_id)
+    return query.order_by(DocumentAccessLog.accessed_at.desc()).limit(limit).all()
