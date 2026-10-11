@@ -17,8 +17,19 @@ logger = logging.getLogger("capitalgoose.webhook")
 WEBHOOK_SECRET = os.environ["CAPITAL_GOOSE_WEBHOOK_KEY"]
 
 
+def _require_webhook_key(received_key: str):
+    if not received_key or not hmac.compare_digest(received_key, WEBHOOK_SECRET):
+        logger.warning("webhook auth failed")
+        raise HTTPException(status_code=401, detail="invalid_webhook_key")
+
+
 @router.post("/cognito")
-async def cognito_webhook(request: Request, db: Session = Depends(get_db)):
+async def cognito_webhook(
+    request: Request,
+    db: Session = Depends(get_db),
+    x_capital_goose_webhook_key: str = Header(None),
+):
+    _require_webhook_key(x_capital_goose_webhook_key)
 
     raw = await request.json()
 
@@ -57,7 +68,12 @@ async def cognito_webhook(request: Request, db: Session = Depends(get_db)):
 
 
 @router.post("/cognito-package")
-async def cognito_package_webhook(request: Request, db: Session = Depends(get_db)):
+async def cognito_package_webhook(
+    request: Request,
+    db: Session = Depends(get_db),
+    x_capital_goose_webhook_key: str = Header(None),
+):
+    _require_webhook_key(x_capital_goose_webhook_key)
 
     raw = await request.json()
 
@@ -158,4 +174,3 @@ async def zapier_application_webhook(
     logger.info("zapier webhook completed request_id=%s application_id=%s status=%s", request_id, app_record.id, status)
 
     return {"status": "success", "request_id": request_id, "application_id": app_record.id, "decision": status}
-
