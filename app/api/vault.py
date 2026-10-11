@@ -5,6 +5,7 @@ from pydantic import BaseModel, EmailStr
 from sqlalchemy.orm import Session
 from app.services import document_vault_service as vault
 from app.services.auth_service import verify_token
+from app.api.admin_auth import require_admin
 from app.db.session import get_db
 
 router = APIRouter()
@@ -37,7 +38,7 @@ def _load_authorized_grant(code: str, db: Session, bank: dict):
     return grant
 
 
-@router.post("/access-grants", tags=["vault"])
+@router.post("/access-grants", tags=["vault"], dependencies=[Depends(require_admin)])
 def create_access_grant(payload: CreateAccessGrantRequest, db: Session = Depends(get_db)):
     grant = vault.create_access_grant(
         db,
