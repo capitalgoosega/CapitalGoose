@@ -53,10 +53,31 @@ def create_access_grant(payload: CreateAccessGrantRequest, db: Session = Depends
     }
 
 
+# NOTE: must stay above the /{code} routes below.
+@router.get("/access-log", tags=["vault"], dependencies=[Depends(require_admin)])
+def view_access_log(application_id: Optional[int] = None, db: Session = Depends(get_db)):
+    entries = vault.list_access_log(db, application_id)
+    return {
+        "entries": [
+            {
+                "accessed_at": e.accessed_at,
+                "application_id": e.application_id,
+                "bank_name": e.bank_name,
+                "bank_user_email": e.bank_user_email,
+                "action": e.action,
+                "document_id": e.document_id,
+                "filename": e.filename,
+            }
+            for e in entries
+        ]
+    }
+
+
 @router.get("/{code}/documents", tags=["vault"])
 def list_documents_json(code: str, db: Session = Depends(get_db), bank=Depends(get_authenticated_bank)):
     grant = _load_authorized_grant(code, db, bank)
     docs = vault.list_documents(db, grant.application_id)
+    vault.log_document_access(db, grant, bank, "list")
     return {"documents": [{"id": d.id, "filename": d.filename} for d in docs]}
 
 
@@ -65,6 +86,8 @@ def view_documents(code: str, db: Session = Depends(get_db), bank=Depends(get_au
     grant = _load_authorized_grant(code, db, bank)
 
     docs = vault.list_documents(db, grant.application_id)
+    vault.log_document_access(db, grant, bank, "list")
+
     if not docs:
         rows = "<p>No documents are available for this application yet.</p>"
     else:
@@ -90,6 +113,8 @@ def download_document(code: str, doc_id: int, db: Session = Depends(get_db), ban
     doc = vault.get_document(db, doc_id)
     if not doc or doc.application_id != grant.application_id:
         raise HTTPException(status_code=404, detail="Document not found.")
+
+    vault.log_document_access(db, grant, bank, "download", doc)
 
     return Response(
         content=vault.get_decrypted_content(doc),
