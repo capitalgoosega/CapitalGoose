@@ -9,11 +9,16 @@ from app.models.bank_user import BankUser
 from app.services.auth_service import hash_password
 
 
+# bank_users and bank_profiles are reference/seed data rebuilt on every
+# startup. bank_users must be dropped first because it has a foreign key
+# pointing at bank_profiles.
 with engine.connect() as conn:
     conn.execute(text("DROP TABLE IF EXISTS bank_users CASCADE"))
     conn.execute(text("DROP TABLE IF EXISTS bank_profiles CASCADE"))
     conn.commit()
 
+# document_access_grants may hold real grant history, so it is never
+# dropped. Just add the new column if it is missing.
 with engine.connect() as conn:
     conn.execute(text(
         "ALTER TABLE document_access_grants "
@@ -25,6 +30,17 @@ Base.metadata.create_all(bind=engine)
 
 
 def seed_bank_profiles():
+    """
+    Seeds BankProfile from the Banking Partner Requirements mapping
+    table (Karon, CTO). Replaces any existing rows on every startup so
+    this stays in sync with the code below.
+
+    KeyBank and TD Bank are seeded inactive (active=False) because no
+    contact email has been provided for them yet.
+
+    Scale Bank is seeded as "nationwide" per the sheet's Geo column,
+    though the sheet's notes flag this as unconfirmed.
+    """
     db = SessionLocal()
     try:
         db.query(BankProfile).delete()
@@ -64,7 +80,7 @@ def seed_bank_profiles():
                 cash_flow_requirement="DSCR 1.15x",
                 years_in_business_required=2,
                 pfs_required=True,
-                active=False,
+                active=False,  # no email yet, inactive until provided
             ),
             BankProfile(
                 name="TD Bank",
@@ -76,7 +92,7 @@ def seed_bank_profiles():
                 cash_flow_requirement="DSCR 1.15x",
                 years_in_business_required=2,
                 pfs_required=True,
-                active=False,
+                active=False,  # no email yet, inactive until provided
             ),
             BankProfile(
                 name="Scale Bank",
@@ -134,7 +150,19 @@ def seed_bank_profiles():
 
 
 def seed_bank_users():
-    TEMP_BANK_PASSWORD = "ChangeMe-CapitalGoose-2026"
+    """
+    Creates one login per active bank with a contact email, using the
+    unique per-bank passwords stored in the BANK_PASSWORDS Railway
+    variable (JSON of {email: password}). Banks with no entry get NO
+    login. There is intentionally no shared fallback password.
+    """
+    import json
+    import os
+
+    passwords = {
+        email.lower(): pw
+        for email, pw in json.loads(os.environ.get("BANK_PASSWORDS", "{}")).items()
+    }
 
     db = SessionLocal()
     try:
@@ -146,10 +174,15 @@ def seed_bank_users():
         ).all()
 
         for bank in banks:
+            email = bank.contact_email.lower()
+            pw = passwords.get(email)
+            if not pw:
+                print(f"BANK LOGIN SKIPPED (no password set): {email}")
+                continue
             db.add(BankUser(
                 bank_profile_id=bank.id,
-                email=bank.contact_email,
-                password_hash=hash_password(TEMP_BANK_PASSWORD),
+                email=email,
+                password_hash=hash_password(pw),
             ))
         db.commit()
     finally:
