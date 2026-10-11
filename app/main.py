@@ -159,10 +159,14 @@ def seed_bank_users():
     import json
     import os
 
-    passwords = {
-        email.lower(): pw
-        for email, pw in json.loads(os.environ.get("BANK_PASSWORDS", "{}")).items()
-    }
+    try:
+        passwords = {
+            email.lower(): pw
+            for email, pw in json.loads(os.environ.get("BANK_PASSWORDS", "{}")).items()
+        }
+    except Exception as e:
+        print(f"BANK_PASSWORDS IS INVALID JSON, no bank logins will be created: {e}")
+        passwords = {}
 
     db = SessionLocal()
     try:
