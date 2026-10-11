@@ -147,15 +147,26 @@ Warm regards,
 The Capitol Goose Team"""
     )
 
+
 def send_bank_document_access_email(recipient_email, recipient_label, code, applicant_name):
-    access_url = f"https://capitalgoose-production.up.railway.app/bank-portal/access?code={code}"
+    # Uses the CTO's banking partner email template. The applicant's name is
+    # intentionally left out: no applicant information goes in this email.
+    # recipient_label and applicant_name stay in the signature so
+    # workflow_service.py doesn't need to change.
+    portal_url = f"https://capitalgoose-production.up.railway.app/bank-portal/access?code={code}"
     body = (
-    f"Hi {recipient_label or ''},\n\n"
-    f"Documents for {applicant_name}'s application are ready for your review.\n\n"
-    f"Access link: {access_url}\n"
-    f"Access code: {code}\n\n"
-    "This link expires in 7 days. Please do not forward this email - "
-    "it grants access to sensitive applicant information.\n\n"
-    "- Capitol Goose"
+        "Hello,\n\n"
+        "Capital Goose has identified a new qualified applicant for your institution.\n\n"
+        "The applicant's collection package is now available for your review through our secure document portal.\n\n"
+        f"Access Code: {code}\n\n"
+        f"Access Collection Package: {portal_url}\n\n"
+        "Please visit the link above and enter your access code to securely retrieve the applicant's information and supporting documentation.\n\n"
+        "If you have any questions or experience issues accessing the collection package, please contact the Capital Goose team.\n\n"
+        "Best regards,\n\n"
+        "Capital Goose Team"
     )
-    send_email(recipient_email, f"Documents ready for review - {applicant_name}", body)
+    send_email(
+        recipient_email,
+        "New Qualified Applicant from Capital Goose – Access Code Available",
+        body,
+    )
