@@ -1,3 +1,5 @@
+import os
+
 from app.services.credit_service import verify_age, simulate_soft_pull
 from app.services.email_service import (
     send_congrats_email,
@@ -65,9 +67,16 @@ def process_package(db, application, data):
     if document_urls:
         ingest_application_documents(db, application.id, document_urls)
 
-    if matched_bank.contact_email:
-        grant = create_access_grant(db, application.id, matched_bank.contact_email, recipient_label=matched_bank.name, bank_profile_id=matched_bank.id)
-        send_bank_document_access_email(matched_bank.contact_email, matched_bank.name, grant.code, application.name)
+    # TEST MODE: send the bank notification to a safe test inbox instead
+    # of the real bank contact. Turn off by removing TEST_MODE in Railway.
+    recipient_email = matched_bank.contact_email
+    if os.environ.get("TEST_MODE", "").lower() == "true" and os.environ.get("TEST_RECIPIENT_EMAIL"):
+        recipient_email = os.environ["TEST_RECIPIENT_EMAIL"]
+        log_event(db, f"TEST MODE: bank notification for {matched_bank.name} redirected to test inbox")
+
+    if recipient_email:
+        grant = create_access_grant(db, application.id, recipient_email, recipient_label=matched_bank.name, bank_profile_id=matched_bank.id)
+        send_bank_document_access_email(recipient_email, matched_bank.name, grant.code, application.name)
     else:
         log_event(db, f"No contact email configured for lender '{matched_bank.name}' - access grant not created")
 
