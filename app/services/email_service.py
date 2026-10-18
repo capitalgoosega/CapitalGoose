@@ -170,3 +170,24 @@ def send_bank_document_access_email(recipient_email, recipient_label, code, appl
         "New Qualified Applicant from Capital Goose – Access Code Available",
         body,
     )
+
+
+def send_bank_invitation_email(recipient_email, activation_url, bank_name, expires_hours=72):
+    body = (
+        "Hello,\n\n"
+        f"Capital Goose has created a secure portal account for {bank_name}.\n\n"
+        "To activate your account, use the link below to choose your password and set up "
+        "an authenticator app for two-step sign-in:\n\n"
+        f"{activation_url}\n\n"
+        f"This link can be used once and expires in {expires_hours} hours. "
+        "We will never email you a password.\n\n"
+        "If you were not expecting this invitation, please ignore this email or contact the "
+        "Capital Goose team.\n\n"
+        "Best regards,\n\n"
+        "Capital Goose Team"
+    )
+    send_email(
+        recipient_email,
+        "Capital Goose – Activate Your Secure Portal Account",
+        body,
+    )
