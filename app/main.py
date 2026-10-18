@@ -5,22 +5,38 @@ from app.api.routes import router
 
 from app.db.session import Base, engine, SessionLocal
 from app.models.bank_profile import BankProfile
-from app.models.bank_user import BankUser
-from app.services.auth_service import hash_password
+from app.models.bank_user import BankUser  # noqa: F401  (makes sure the table gets created)
 
 
 # One-time additive migrations. Safe to run on every startup.
-# Lender data is no longer wiped on deploy.
 with engine.connect() as conn:
     conn.execute(text("ALTER TABLE IF EXISTS document_access_grants ADD COLUMN IF NOT EXISTS bank_profile_id INTEGER"))
+
     conn.execute(text("ALTER TABLE IF EXISTS bank_profiles ADD COLUMN IF NOT EXISTS allowed_states VARCHAR"))
     conn.execute(text("ALTER TABLE IF EXISTS bank_profiles ADD COLUMN IF NOT EXISTS geography_status VARCHAR"))
     conn.execute(text("ALTER TABLE IF EXISTS bank_profiles ADD COLUMN IF NOT EXISTS min_dscr DOUBLE PRECISION"))
     conn.execute(text("ALTER TABLE IF EXISTS bank_profiles ADD COLUMN IF NOT EXISTS min_annual_revenue INTEGER"))
     conn.execute(text("ALTER TABLE IF EXISTS bank_profiles DROP COLUMN IF EXISTS geographic_scope"))
+
+    conn.execute(text("ALTER TABLE IF EXISTS bank_users ALTER COLUMN password_hash DROP NOT NULL"))
+    conn.execute(text("ALTER TABLE IF EXISTS bank_users ADD COLUMN IF NOT EXISTS status VARCHAR"))
+    conn.execute(text("ALTER TABLE IF EXISTS bank_users ADD COLUMN IF NOT EXISTS invite_token_hash VARCHAR"))
+    conn.execute(text("ALTER TABLE IF EXISTS bank_users ADD COLUMN IF NOT EXISTS invite_expires_at TIMESTAMP WITH TIME ZONE"))
+    conn.execute(text("ALTER TABLE IF EXISTS bank_users ADD COLUMN IF NOT EXISTS mfa_secret_enc VARCHAR"))
+    conn.execute(text("ALTER TABLE IF EXISTS bank_users ADD COLUMN IF NOT EXISTS mfa_enabled BOOLEAN DEFAULT FALSE"))
+    conn.execute(text("ALTER TABLE IF EXISTS bank_users ADD COLUMN IF NOT EXISTS mfa_last_step INTEGER"))
+    conn.execute(text("ALTER TABLE IF EXISTS bank_users ADD COLUMN IF NOT EXISTS failed_attempts INTEGER DEFAULT 0"))
+    conn.execute(text("ALTER TABLE IF EXISTS bank_users ADD COLUMN IF NOT EXISTS locked_until TIMESTAMP WITH TIME ZONE"))
+    conn.execute(text("ALTER TABLE IF EXISTS bank_users ADD COLUMN IF NOT EXISTS last_login_at TIMESTAMP WITH TIME ZONE"))
     conn.commit()
 
 Base.metadata.create_all(bind=engine)
+
+# One-time cleanup: remove the old shared-password logins (they have no
+# status). Banks now get in through invitations only.
+with engine.connect() as conn:
+    conn.execute(text("DELETE FROM bank_users WHERE status IS NULL"))
+    conn.commit()
 
 
 # Starting lender data, from the Banking Partner Requirements sheet and
@@ -128,52 +144,7 @@ def seed_lenders():
         db.close()
 
 
-def seed_bank_users():
-    """
-    Creates one login per active bank with a contact email, using the
-    unique per-bank passwords stored in the BANK_PASSWORDS Railway
-    variable (JSON of {email: password}). Banks with no entry get NO
-    login. This is replaced by invitations and MFA in the next phase.
-    """
-    import json
-    import os
-
-    try:
-        passwords = {
-            email.lower(): pw
-            for email, pw in json.loads(os.environ.get("BANK_PASSWORDS", "{}")).items()
-        }
-    except Exception as e:
-        print(f"BANK_PASSWORDS IS INVALID JSON, no bank logins will be created: {e}")
-        passwords = {}
-
-    db = SessionLocal()
-    try:
-        db.query(BankUser).delete()
-
-        banks = db.query(BankProfile).filter(
-            BankProfile.active == True,  # noqa: E712
-            BankProfile.contact_email.isnot(None),
-        ).all()
-
-        for bank in banks:
-            email = bank.contact_email.lower()
-            pw = passwords.get(email)
-            if not pw:
-                print(f"BANK LOGIN SKIPPED (no password set): {email}")
-                continue
-            db.add(BankUser(
-                bank_profile_id=bank.id,
-                email=email,
-                password_hash=hash_password(pw),
-            ))
-        db.commit()
-    finally:
-        db.close()
-
-
 seed_lenders()
-seed_bank_users()
 
 
 app = FastAPI(
