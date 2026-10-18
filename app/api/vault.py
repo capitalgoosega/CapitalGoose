@@ -5,6 +5,7 @@ from pydantic import BaseModel, EmailStr
 from sqlalchemy.orm import Session
 from app.services import document_vault_service as vault
 from app.services.auth_service import verify_token
+from app.models.bank_user import BankUser
 from app.api.admin_auth import require_admin
 from app.db.session import get_db
 
@@ -17,7 +18,7 @@ class CreateAccessGrantRequest(BaseModel):
     recipient_label: Optional[str] = None
 
 
-def get_authenticated_bank(authorization: str = Header(None)):
+def get_authenticated_bank(authorization: str = Header(None), db: Session = Depends(get_db)):
     if not authorization or not authorization.lower().startswith("bearer "):
         raise HTTPException(status_code=401, detail="Missing or invalid Authorization header")
 
@@ -25,6 +26,10 @@ def get_authenticated_bank(authorization: str = Header(None)):
     payload = verify_token(token)
     if not payload:
         raise HTTPException(status_code=401, detail="Invalid or expired session — please log in again")
+
+    user = db.query(BankUser).filter(BankUser.id == payload.get("bank_user_id")).first()
+    if not user or user.status != "active" or user.bank_profile_id != payload.get("bank_profile_id"):
+        raise HTTPException(status_code=401, detail="This account is not active")
 
     return payload
 
