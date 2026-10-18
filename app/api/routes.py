@@ -1,5 +1,5 @@
 from fastapi import APIRouter, Depends
-from app.api import intake, package, applications, webhooks, vault, bank_portal
+from app.api import intake, package, applications, webhooks, vault, bank_portal, admin_lenders
 from app.api.admin_auth import require_admin
 
 router = APIRouter()
@@ -8,6 +8,7 @@ router = APIRouter()
 router.include_router(intake.router, prefix="/intake", dependencies=[Depends(require_admin)])
 router.include_router(package.router, prefix="/package", dependencies=[Depends(require_admin)])
 router.include_router(applications.router, prefix="/applications", dependencies=[Depends(require_admin)])
+router.include_router(admin_lenders.router, prefix="/admin/lenders", dependencies=[Depends(require_admin)])
 
 # Called by Zapier (has its own protection) and by banks (login required)
 router.include_router(webhooks.router, prefix="/webhooks")
