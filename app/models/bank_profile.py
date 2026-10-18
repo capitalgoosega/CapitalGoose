@@ -1,30 +1,70 @@
-from sqlalchemy import Column, Integer, String, Boolean
+from sqlalchemy import Column, Integer, String, Boolean, Float
 from app.db.session import Base
 
-# Geographic scopes map to the actual set of eligible states.
-# "nationwide" means no restriction. Update this mapping if a bank's
-# footprint changes or gets confirmed more precisely (e.g. once TD's
-# exact 15-state + DC list, or Scale's real out-of-state appetite, is
-# confirmed with the partner).
-GEOGRAPHIC_SCOPES = {
-    "nationwide": None,  # None = no restriction, always eligible
-    "georgia": {"GA"},
-    "south_east": {"AL", "FL", "GA", "KY", "MS", "NC", "SC", "TN", "VA", "WV"},
-    "tri_state": set(),  # TODO: exact states unconfirmed — currently blocks all matches until defined
+STATE_NAMES = {
+    "AL": "ALABAMA", "AK": "ALASKA", "AZ": "ARIZONA", "AR": "ARKANSAS",
+    "CA": "CALIFORNIA", "CO": "COLORADO", "CT": "CONNECTICUT", "DE": "DELAWARE",
+    "DC": "DISTRICT OF COLUMBIA", "FL": "FLORIDA", "GA": "GEORGIA", "HI": "HAWAII",
+    "ID": "IDAHO", "IL": "ILLINOIS", "IN": "INDIANA", "IA": "IOWA",
+    "KS": "KANSAS", "KY": "KENTUCKY", "LA": "LOUISIANA", "ME": "MAINE",
+    "MD": "MARYLAND", "MA": "MASSACHUSETTS", "MI": "MICHIGAN", "MN": "MINNESOTA",
+    "MS": "MISSISSIPPI", "MO": "MISSOURI", "MT": "MONTANA", "NE": "NEBRASKA",
+    "NV": "NEVADA", "NH": "NEW HAMPSHIRE", "NJ": "NEW JERSEY", "NM": "NEW MEXICO",
+    "NY": "NEW YORK", "NC": "NORTH CAROLINA", "ND": "NORTH DAKOTA", "OH": "OHIO",
+    "OK": "OKLAHOMA", "OR": "OREGON", "PA": "PENNSYLVANIA", "RI": "RHODE ISLAND",
+    "SC": "SOUTH CAROLINA", "SD": "SOUTH DAKOTA", "TN": "TENNESSEE", "TX": "TEXAS",
+    "UT": "UTAH", "VT": "VERMONT", "VA": "VIRGINIA", "WA": "WASHINGTON",
+    "WV": "WEST VIRGINIA", "WI": "WISCONSIN", "WY": "WYOMING",
 }
+VALID_STATE_CODES = set(STATE_NAMES.keys())
+_NAME_TO_CODE = {name: code for code, name in STATE_NAMES.items()}
+
+GEOGRAPHY_STATUSES = {"confirmed", "provisional", "needs_clarification"}
+
+
+def to_state_code(value):
+    """Accepts 'GA' or 'Georgia' (any case) and returns 'GA', or None if unrecognized."""
+    if not value:
+        return None
+    cleaned = str(value).strip().upper()
+    if cleaned in VALID_STATE_CODES:
+        return cleaned
+    return _NAME_TO_CODE.get(cleaned)
+
+
+def normalize_allowed_states(value):
+    """
+    Cleans up an allowed_states value. Returns None (unknown), "ALL"
+    (nationwide), or a sorted comma-separated list of state codes.
+    Raises ValueError on anything unrecognized.
+    """
+    if value is None:
+        return None
+    cleaned = str(value).strip().upper()
+    if not cleaned:
+        return None
+    if cleaned == "ALL":
+        return "ALL"
+    codes = set()
+    for part in cleaned.split(","):
+        code = to_state_code(part)
+        if not code:
+            raise ValueError(f"Unrecognized state: {part.strip()!r}")
+        codes.add(code)
+    return ",".join(sorted(codes))
 
 
 class BankProfile(Base):
     """
-    A queryable lending partner profile, sourced from the Banking
-    Partner Requirements mapping table (Karon, CTO).
+    A lending partner. Lender rules live here as data so they can be
+    changed through the admin endpoints without redeploying.
 
-    NOTE on configurability: this table is currently seeded via code
-    (see main.py) rather than edited through an admin tool, so adding
-    or updating a bank still requires a code change + redeploy. This
-    does not yet meet the "no code change needed" requirement from the
-    requirements doc — flag to Karon as a phase-2 item if that matters
-    before more partners are added.
+    allowed_states: "ALL" = nationwide, "MN" or "GA,FL" = those states only,
+    blank/NULL = unknown, which NEVER matches (fails closed).
+
+    min_dscr, min_annual_revenue, years_in_business_required and
+    pfs_required are stored but not enforced until the eligibility
+    engine is built.
     """
     __tablename__ = "bank_profiles"
 
@@ -35,28 +75,27 @@ class BankProfile(Base):
     min_credit_score = Column(Integer, nullable=False, default=0)
     max_credit_score = Column(Integer, nullable=False, default=850)
 
-    # One of the keys in GEOGRAPHIC_SCOPES above.
-    geographic_scope = Column(String, nullable=False, default="nationwide")
+    allowed_states = Column(String, nullable=True)
+    # confirmed | provisional | needs_clarification
+    geography_status = Column(String, nullable=True, default="confirmed")
 
-    # True only for banks verified against a published credit box (per
-    # the mapping table notes). False = market-standard assumption,
-    # not yet confirmed with the partner directly.
     verified = Column(Boolean, default=False)
 
-    # Reference-only fields below: displayed for underwriting context,
-    # NOT enforced automatically in matching. Cognito Forms doesn't
-    # currently collect structured revenue/cash-flow/years-in-business
-    # data, so these can't be auto-checked yet.
     cash_flow_requirement = Column(String, nullable=True)
+    min_dscr = Column(Float, nullable=True)
+    min_annual_revenue = Column(Integer, nullable=True)
     years_in_business_required = Column(Integer, nullable=True, default=2)
     pfs_required = Column(Boolean, default=True)
 
     active = Column(Boolean, default=True)
 
-    def accepts_state(self, applicant_state: str) -> bool:
-        allowed = GEOGRAPHIC_SCOPES.get(self.geographic_scope)
-        if allowed is None:
-            return True  # nationwide
-        if not applicant_state:
-            return False  # unknown state — don't risk matching a regional bank
-        return applicant_state.strip().upper() in allowed
+    def accepts_state(self, applicant_state) -> bool:
+        states = (self.allowed_states or "").strip().upper()
+        if not states:
+            return False  # geography unknown: never match
+        if states == "ALL":
+            return True
+        code = to_state_code(applicant_state)
+        if not code:
+            return False  # applicant state missing or unrecognized
+        return code in {s.strip() for s in states.split(",")}
