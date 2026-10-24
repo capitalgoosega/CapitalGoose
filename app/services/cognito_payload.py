@@ -80,6 +80,19 @@ def has_credit_pull_consent(payload: dict) -> bool:
     return signed and agreed
 
 
+def describe_shape(payload: Any, depth: int = 3) -> Any:
+    """Field names and value TYPES only, for diagnosing a rejected payload.
+    Never includes values, so it is safe to log even though the payload holds
+    SSN/EIN."""
+    if isinstance(payload, dict):
+        if depth <= 0:
+            return "dict"
+        return {str(k): describe_shape(v, depth - 1) for k, v in payload.items()}
+    if isinstance(payload, list):
+        return f"list[{len(payload)}]"
+    return type(payload).__name__
+
+
 def parse_loan_application(payload: Any) -> IntakeRequest:
     if not isinstance(payload, dict):
         raise CognitoPayloadError("payload_not_object")

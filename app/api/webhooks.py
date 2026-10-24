@@ -13,7 +13,9 @@ from app.services.workflow_service import process_intake, process_package
 from app.schemas.intake import IntakeRequest
 from app.services.cognito_payload import (
     CognitoPayloadError,
+    describe_shape,
     entry_id as cognito_entry_id,
+    parse_loan_amount,
     parse_loan_application,
 )
 
@@ -48,7 +50,7 @@ async def cognito_webhook(
             first_name=raw["Entry.FirstName"],
             last_name=raw["Entry.LastName"],
             email=raw["Entry.EmailAddress"],
-            loan_amount=int(raw["Entry.LoanAmount"]),
+            loan_amount=parse_loan_amount(raw["Entry.LoanAmount"]),
             loan_type=raw["Entry.LoanType"],
             dob=raw["Entry.DateOfBirth"],
             address={
@@ -60,6 +62,8 @@ async def cognito_webhook(
         )
     except KeyError as e:
         raise HTTPException(status_code=400, detail=f"Missing field from Cognito: {e}")
+    except ValueError:
+        raise HTTPException(status_code=400, detail="invalid_request_data")
 
     status = process_intake(db, intake_data)
 
@@ -139,7 +143,7 @@ async def zapier_application_webhook(
             first_name=raw["Entry.FirstName"],
             last_name=raw["Entry.LastName"],
             email=raw["Entry.EmailAddress"],
-            loan_amount=int(raw["Entry.LoanAmount"]),
+            loan_amount=parse_loan_amount(raw["Entry.LoanAmount"]),
             loan_type=raw["Entry.LoanType"],
             dob=raw["Entry.DateOfBirth"],
             address={
@@ -150,7 +154,8 @@ async def zapier_application_webhook(
             }
         )
     except (KeyError, ValueError) as e:
-        logger.info("zapier webhook invalid payload request_id=%s missing=%s", request_id, str(e))
+        logger.warning("zapier webhook invalid payload request_id=%s error_type=%s field=%s",
+                       request_id, type(e).__name__, str(e) if isinstance(e, KeyError) else "-")
         raise HTTPException(status_code=400, detail="invalid_request_data")
 
     if entry_id:
@@ -220,10 +225,12 @@ async def cognito_application_webhook(
     try:
         intake_data = parse_loan_application(raw)
     except CognitoPayloadError as e:
-        logger.info("cognito webhook rejected request_id=%s reason=%s", request_id, e)
+        # Field names and types only (never values) so a format mismatch can be diagnosed.
+        logger.warning("cognito webhook rejected request_id=%s reason=%s shape=%s", request_id, e, describe_shape(raw))
         raise HTTPException(status_code=400, detail=str(e))
-    except ValueError:
-        logger.info("cognito webhook rejected request_id=%s reason=invalid_fields", request_id)
+    except ValueError as e:
+        logger.warning("cognito webhook rejected request_id=%s reason=invalid_fields error_type=%s shape=%s",
+                       request_id, type(e).__name__, describe_shape(raw))
         raise HTTPException(status_code=400, detail="invalid_request_data")
 
     entry_id = cognito_entry_id(raw)
@@ -260,7 +267,7 @@ async def cognito_application_webhook(
         status = process_intake(db, intake_data)
     except ValueError:
         _release_claim()
-        logger.info("cognito webhook invalid date of birth request_id=%s entry_id=%s", request_id, entry_id)
+        logger.warning("cognito webhook invalid date of birth request_id=%s entry_id=%s", request_id, entry_id)
         raise HTTPException(status_code=400, detail="invalid_date_of_birth")
     except Exception as e:
         _release_claim()

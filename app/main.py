@@ -1,5 +1,26 @@
+import logging
+import re
+
 from fastapi import FastAPI
 from sqlalchemy import text
+
+
+# The Cognito webhook authenticates with ?key=<secret> in its URL, and uvicorn's
+# access log prints full URLs. Mask that value so the secret never reaches the logs.
+_SECRET_QUERY = re.compile(r"((?:^|[?&])(?:key|token)=)[^&\s]+", re.IGNORECASE)
+
+
+class _RedactSecretQueryParams(logging.Filter):
+    def filter(self, record: logging.LogRecord) -> bool:
+        if isinstance(record.args, tuple):
+            record.args = tuple(
+                _SECRET_QUERY.sub(r"\1[redacted]", a) if isinstance(a, str) else a
+                for a in record.args
+            )
+        return True
+
+
+logging.getLogger("uvicorn.access").addFilter(_RedactSecretQueryParams())
 
 from app.api.routes import router
 
