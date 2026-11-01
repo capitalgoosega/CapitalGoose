@@ -7,7 +7,12 @@ from app.services.email_service import (
     send_bank_submission_email,
     send_bank_document_access_email
 )
-from app.services.lender_service import choose_lender
+from app.services.eligibility_service import (
+    extract_financials,
+    has_pfs,
+    save_financials,
+    evaluate_lenders,
+)
 from app.services.audit_service import log_event
 from app.services.document_vault_service import ingest_application_documents, create_access_grant
 
@@ -43,18 +48,7 @@ def process_package(db, application, data):
         applicant_state = data.get("BusinessOperatingState") or data.get("Entry.BusinessOperatingState")
 
     if not applicant_state:
-        log_event(db, f"No business operating state provided for application {application.id} — geographic matching limited to nationwide banks only")
-
-    matched_bank = choose_lender(db, soft_pull.credit_score, applicant_state)
-
-    if not matched_bank:
-        application.status = "no_lender_match"
-        db.commit()
-        log_event(db, f"No lender match found for application {application.id} — score {soft_pull.credit_score}, state {applicant_state}")
-        return
-
-    application.lender = matched_bank.name
-    application.status = "submitted"
+        log_event(db, f"No business operating state provided for application {application.id}")
 
     document_urls = {}
     if isinstance(data, dict):
@@ -63,6 +57,34 @@ def process_package(db, application, data):
                 document_urls[key] = value
             elif isinstance(value, dict) and str(value.get("Url", "")).startswith("http"):
                 document_urls[key] = value["Url"]
+
+    financials = extract_financials(data)
+    if all(financials[k] is None for k in (
+        "years_in_business", "annual_revenue", "annual_net_operating_income", "annual_debt_payments"
+    )):
+        log_event(db, f"No financial fields received for application {application.id} — check the Zapier mapping")
+    save_financials(db, application.id, financials)
+
+    eligible = evaluate_lenders(
+        db,
+        application.id,
+        soft_pull.credit_score,
+        applicant_state,
+        financials,
+        has_pfs(document_urls),
+    )
+    log_event(db, f"Eligibility check for application {application.id}: {len(eligible)} eligible lender(s)")
+
+    if not eligible:
+        application.status = "no_lender_match"
+        db.commit()
+        log_event(db, f"No eligible lender for application {application.id} — see /admin/eligibility/{application.id}")
+        return
+
+    matched_bank = eligible[0]
+
+    application.lender = matched_bank.name
+    application.status = "submitted"
 
     if document_urls:
         ingest_application_documents(db, application.id, document_urls)
