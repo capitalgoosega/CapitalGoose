@@ -75,7 +75,11 @@ def entry_id(payload: dict) -> Optional[str]:
 def has_credit_pull_consent(payload: dict) -> bool:
     consent = _section(payload, "ConsentPrivacy")
     signature = consent.get("SignatureForConsentToPullCredit")
-    signed = isinstance(signature, dict) and bool(signature.get("Png") or signature.get("Svg"))
+    # Cognito sends a drawn signature as an object with Name, ContentType,
+    # Content and File. An unsigned field arrives empty or missing.
+    signed = isinstance(signature, dict) and any(
+        _text(signature.get(key)) for key in ("Content", "File", "Png", "Svg")
+    )
     agreed = consent.get("IAgreeToTheCapitolGoosePrivacyPolicy") is True
     return signed and agreed
 
