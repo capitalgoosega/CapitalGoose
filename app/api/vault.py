@@ -18,7 +18,7 @@ class CreateAccessGrantRequest(BaseModel):
     recipient_label: Optional[str] = None
 
 
-def get_authenticated_bank(authorization: str = Header(None), db: Session = Depends(get_db)):
+def get_authenticated_bank(code: str, authorization: str = Header(None), db: Session = Depends(get_db)):
     if not authorization or not authorization.lower().startswith("bearer "):
         raise HTTPException(status_code=401, detail="Missing or invalid Authorization header")
 
@@ -29,17 +29,23 @@ def get_authenticated_bank(authorization: str = Header(None), db: Session = Depe
 
     user = db.query(BankUser).filter(BankUser.id == payload.get("bank_user_id")).first()
     if not user or user.status != "active" or user.bank_profile_id != payload.get("bank_profile_id"):
+        vault.log_blocked_access(db, payload, "account_inactive", "access", code)
         raise HTTPException(status_code=401, detail="This account is not active")
 
     return payload
 
 
-def _load_authorized_grant(code: str, db: Session, bank: dict):
-    grant = vault.validate_and_load_grant(db, code)
-    if not grant:
+def _load_authorized_grant(code: str, db: Session, bank: dict, action: str, doc_id=None):
+    grant, problem = vault.check_grant(db, code)
+    if problem:
+        vault.log_blocked_access(db, bank, problem, action, code, grant, doc_id)
         raise HTTPException(status_code=404, detail="This link is invalid, revoked, or has expired.")
+
     if grant.bank_profile_id != bank["bank_profile_id"]:
+        vault.log_blocked_access(db, bank, "wrong_bank", action, code, grant, doc_id)
         raise HTTPException(status_code=403, detail="This access code is not assigned to your institution.")
+
+    vault.record_grant_access(db, grant)
     return grant
 
 
@@ -60,18 +66,25 @@ def create_access_grant(payload: CreateAccessGrantRequest, db: Session = Depends
 
 # NOTE: must stay above the /{code} routes below.
 @router.get("/access-log", tags=["vault"], dependencies=[Depends(require_admin)])
-def view_access_log(application_id: Optional[int] = None, db: Session = Depends(get_db)):
-    entries = vault.list_access_log(db, application_id)
+def view_access_log(
+    application_id: Optional[int] = None,
+    outcome: Optional[str] = None,
+    db: Session = Depends(get_db),
+):
+    entries = vault.list_access_log(db, application_id, outcome)
     return {
         "entries": [
             {
                 "accessed_at": e.accessed_at,
+                "outcome": e.outcome or "success",
+                "reason": e.reason,
                 "application_id": e.application_id,
                 "bank_name": e.bank_name,
                 "bank_user_email": e.bank_user_email,
                 "action": e.action,
                 "document_id": e.document_id,
                 "filename": e.filename,
+                "code_hint": e.code_hint,
             }
             for e in entries
         ]
@@ -80,7 +93,7 @@ def view_access_log(application_id: Optional[int] = None, db: Session = Depends(
 
 @router.get("/{code}/documents", tags=["vault"])
 def list_documents_json(code: str, db: Session = Depends(get_db), bank=Depends(get_authenticated_bank)):
-    grant = _load_authorized_grant(code, db, bank)
+    grant = _load_authorized_grant(code, db, bank, "list")
     docs = vault.list_documents(db, grant.application_id)
     vault.log_document_access(db, grant, bank, "list")
     return {"documents": [{"id": d.id, "filename": d.filename} for d in docs]}
@@ -88,7 +101,7 @@ def list_documents_json(code: str, db: Session = Depends(get_db), bank=Depends(g
 
 @router.get("/{code}", response_class=HTMLResponse, tags=["vault"])
 def view_documents(code: str, db: Session = Depends(get_db), bank=Depends(get_authenticated_bank)):
-    grant = _load_authorized_grant(code, db, bank)
+    grant = _load_authorized_grant(code, db, bank, "list")
 
     docs = vault.list_documents(db, grant.application_id)
     vault.log_document_access(db, grant, bank, "list")
@@ -113,10 +126,11 @@ def view_documents(code: str, db: Session = Depends(get_db), bank=Depends(get_au
 
 @router.get("/{code}/download/{doc_id}", tags=["vault"])
 def download_document(code: str, doc_id: int, db: Session = Depends(get_db), bank=Depends(get_authenticated_bank)):
-    grant = _load_authorized_grant(code, db, bank)
+    grant = _load_authorized_grant(code, db, bank, "download", doc_id)
 
     doc = vault.get_document(db, doc_id)
     if not doc or doc.application_id != grant.application_id:
+        vault.log_blocked_access(db, bank, "document_not_found", "download", code, grant, doc_id)
         raise HTTPException(status_code=404, detail="Document not found.")
 
     vault.log_document_access(db, grant, bank, "download", doc)
