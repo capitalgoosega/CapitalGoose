@@ -49,6 +49,12 @@ with engine.connect() as conn:
     conn.execute(text("ALTER TABLE IF EXISTS bank_users ADD COLUMN IF NOT EXISTS failed_attempts INTEGER DEFAULT 0"))
     conn.execute(text("ALTER TABLE IF EXISTS bank_users ADD COLUMN IF NOT EXISTS locked_until TIMESTAMP WITH TIME ZONE"))
     conn.execute(text("ALTER TABLE IF EXISTS bank_users ADD COLUMN IF NOT EXISTS last_login_at TIMESTAMP WITH TIME ZONE"))
+
+    # NEW: audit log can now hold refused attempts
+    conn.execute(text("ALTER TABLE IF EXISTS document_access_log ALTER COLUMN application_id DROP NOT NULL"))
+    conn.execute(text("ALTER TABLE IF EXISTS document_access_log ADD COLUMN IF NOT EXISTS outcome VARCHAR"))
+    conn.execute(text("ALTER TABLE IF EXISTS document_access_log ADD COLUMN IF NOT EXISTS reason VARCHAR"))
+    conn.execute(text("ALTER TABLE IF EXISTS document_access_log ADD COLUMN IF NOT EXISTS code_hint VARCHAR"))
     conn.commit()
 
 Base.metadata.create_all(bind=engine)
