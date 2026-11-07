@@ -3,6 +3,7 @@ import os
 from datetime import datetime, timezone
 
 import requests
+from sqlalchemy import or_
 from sqlalchemy.orm import Session
 
 from app.models.access_code import DocumentAccessGrant, generate_access_code
@@ -68,15 +69,34 @@ def create_access_grant(db: Session, application_id, recipient_email, recipient_
     return grant
 
 
-def validate_and_load_grant(db: Session, code: str):
+def check_grant(db: Session, code: str):
+    """
+    Looks up a code WITHOUT counting it as an access.
+    Returns (grant, problem): problem is None when the code is usable,
+    otherwise "unknown_code", "revoked" or "expired".
+    """
     grant = db.query(DocumentAccessGrant).filter(DocumentAccessGrant.code == code).first()
-    if not grant or grant.revoked:
-        return None
+    if not grant:
+        return None, "unknown_code"
+    if grant.revoked:
+        return grant, "revoked"
     if grant.expires_at < datetime.now(timezone.utc):
-        return None
-    grant.access_count += 1
+        return grant, "expired"
+    return grant, None
+
+
+def record_grant_access(db: Session, grant):
+    """Counts a real, authorized access to a grant."""
+    grant.access_count = (grant.access_count or 0) + 1
     grant.last_accessed_at = datetime.now(timezone.utc)
     db.commit()
+
+
+def validate_and_load_grant(db: Session, code: str):
+    grant, problem = check_grant(db, code)
+    if problem:
+        return None
+    record_grant_access(db, grant)
     return grant
 
 
@@ -90,7 +110,7 @@ def revoke_grant(db: Session, code: str) -> bool:
 
 
 def log_document_access(db: Session, grant, bank: dict, action: str, doc=None):
-    """Records one audit-trail entry. `bank` is the verified login token payload."""
+    """Records one successful access. `bank` is the verified login token payload."""
     user = db.query(BankUser).filter(BankUser.id == bank.get("bank_user_id")).first()
     profile = db.query(BankProfile).filter(BankProfile.id == bank.get("bank_profile_id")).first()
 
@@ -102,12 +122,44 @@ def log_document_access(db: Session, grant, bank: dict, action: str, doc=None):
         action=action,
         document_id=doc.id if doc else None,
         filename=doc.filename if doc else None,
+        outcome="success",
     ))
     db.commit()
 
 
-def list_access_log(db: Session, application_id=None, limit: int = 200):
+def log_blocked_access(db: Session, bank: dict, reason: str, action: str, code: str = "", grant=None, doc_id=None):
+    """
+    Records a refused attempt by a signed-in bank user. Only the last four
+    characters of the attempted code are kept. If logging itself fails, the
+    request is still refused: this never turns a refusal into an error.
+    """
+    try:
+        user = db.query(BankUser).filter(BankUser.id == bank.get("bank_user_id")).first()
+        profile = db.query(BankProfile).filter(BankProfile.id == bank.get("bank_profile_id")).first()
+
+        db.add(DocumentAccessLog(
+            application_id=grant.application_id if grant else None,
+            grant_id=grant.id if grant else None,
+            bank_name=profile.name if profile else None,
+            bank_user_email=user.email if user else None,
+            action=action,
+            document_id=doc_id,
+            outcome="blocked",
+            reason=reason,
+            code_hint=("..." + code[-4:]) if code else None,
+        ))
+        db.commit()
+    except Exception as e:
+        db.rollback()
+        print(f"AUDIT LOG ERROR (blocked access not recorded): {type(e).__name__}")
+
+
+def list_access_log(db: Session, application_id=None, outcome=None, limit: int = 200):
     query = db.query(DocumentAccessLog)
     if application_id is not None:
         query = query.filter(DocumentAccessLog.application_id == application_id)
+    if outcome == "blocked":
+        query = query.filter(DocumentAccessLog.outcome == "blocked")
+    elif outcome == "success":
+        query = query.filter(or_(DocumentAccessLog.outcome == "success", DocumentAccessLog.outcome.is_(None)))
     return query.order_by(DocumentAccessLog.accessed_at.desc()).limit(limit).all()
