@@ -27,16 +27,21 @@ from app.api.routes import router
 from app.db.session import Base, engine, SessionLocal
 from app.models.bank_profile import BankProfile
 from app.models.bank_user import BankUser  # noqa: F401  (makes sure the table gets created)
+from app.models import partner as _partner_models  # noqa: F401  (partners, referrals, consents, status events, webhooks)
 
 
 # One-time additive migrations. Safe to run on every startup.
 with engine.connect() as conn:
     conn.execute(text("ALTER TABLE IF EXISTS document_access_grants ADD COLUMN IF NOT EXISTS bank_profile_id INTEGER"))
+    conn.execute(text("ALTER TABLE IF EXISTS document_blobs ADD COLUMN IF NOT EXISTS doc_type VARCHAR"))
+    conn.execute(text("ALTER TABLE IF EXISTS referral_status_events ADD COLUMN IF NOT EXISTS reason_code VARCHAR"))
 
     conn.execute(text("ALTER TABLE IF EXISTS bank_profiles ADD COLUMN IF NOT EXISTS allowed_states VARCHAR"))
     conn.execute(text("ALTER TABLE IF EXISTS bank_profiles ADD COLUMN IF NOT EXISTS geography_status VARCHAR"))
     conn.execute(text("ALTER TABLE IF EXISTS bank_profiles ADD COLUMN IF NOT EXISTS min_dscr DOUBLE PRECISION"))
     conn.execute(text("ALTER TABLE IF EXISTS bank_profiles ADD COLUMN IF NOT EXISTS min_annual_revenue INTEGER"))
+    conn.execute(text("ALTER TABLE IF EXISTS bank_profiles ADD COLUMN IF NOT EXISTS min_loan_amount INTEGER"))
+    conn.execute(text("ALTER TABLE IF EXISTS bank_profiles ADD COLUMN IF NOT EXISTS max_loan_amount INTEGER"))
     conn.execute(text("ALTER TABLE IF EXISTS bank_profiles DROP COLUMN IF EXISTS geographic_scope"))
 
     conn.execute(text("ALTER TABLE IF EXISTS bank_users ALTER COLUMN password_hash DROP NOT NULL"))
@@ -181,6 +186,10 @@ app = FastAPI(
 
 
 app.include_router(router)
+
+# Delivers queued partner webhooks (with retries). Set DISABLE_WEBHOOK_WORKER=1 to turn off.
+from app.engine.webhook_service import start_worker
+start_worker(SessionLocal)
 
 
 @app.get("/")

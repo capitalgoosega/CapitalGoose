@@ -3,6 +3,7 @@ import json
 from app.models.application_financials import ApplicationFinancials
 from app.models.bank_profile import BankProfile, to_state_code
 from app.models.eligibility_result import LenderEligibilityResult
+from app.engine.loan_range import check_loan_amount
 
 
 def parse_number(value):
@@ -65,7 +66,7 @@ def _check(criterion, status, detail):
     return {"criterion": criterion, "status": status, "detail": detail}
 
 
-def _evaluate_lender(lender, credit_score, state, fin, pfs_uploaded):
+def _evaluate_lender(lender, credit_score, state, fin, pfs_uploaded, loan_amount=None):
     checks = []
 
     # Credit score
@@ -131,6 +132,11 @@ def _evaluate_lender(lender, credit_score, state, fin, pfs_uploaded):
             else:
                 checks.append(_check("dscr", "fail", f"DSCR {dscr:.2f} is under the {lender.min_dscr:.2f} minimum"))
 
+    # Loan size (only when the lender has limits configured)
+    loan_check = check_loan_amount(lender.min_loan_amount, lender.max_loan_amount, loan_amount)
+    if loan_check:
+        checks.append(_check("loan_amount", loan_check[0], loan_check[1]))
+
     # Personal Financial Statement
     if lender.pfs_required:
         if pfs_uploaded:
@@ -147,7 +153,7 @@ def save_financials(db, application_id, fin):
     db.commit()
 
 
-def evaluate_lenders(db, application_id, credit_score, state, fin, pfs_uploaded):
+def evaluate_lenders(db, application_id, credit_score, state, fin, pfs_uploaded, loan_amount=None):
     """
     Checks the applicant against every active lender, saves the result
     and reasons for each, and returns the eligible lenders, best fit first
@@ -164,7 +170,7 @@ def evaluate_lenders(db, application_id, credit_score, state, fin, pfs_uploaded)
 
     eligible = []
     for lender in lenders:
-        checks = _evaluate_lender(lender, credit_score, state, fin, pfs_uploaded)
+        checks = _evaluate_lender(lender, credit_score, state, fin, pfs_uploaded, loan_amount)
         is_eligible = all(c["status"] == "pass" for c in checks)
         db.add(LenderEligibilityResult(
             application_id=application_id,

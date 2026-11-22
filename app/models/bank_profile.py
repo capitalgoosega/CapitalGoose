@@ -84,6 +84,9 @@ class BankProfile(Base):
     cash_flow_requirement = Column(String, nullable=True)
     min_dscr = Column(Float, nullable=True)
     min_annual_revenue = Column(Integer, nullable=True)
+    # Loan size the lender writes. Both blank = no limit configured (not enforced).
+    min_loan_amount = Column(Integer, nullable=True)
+    max_loan_amount = Column(Integer, nullable=True)
     years_in_business_required = Column(Integer, nullable=True, default=2)
     pfs_required = Column(Boolean, default=True)
 
