@@ -119,3 +119,22 @@ class LenderStatusLink(Base):
     revoked = Column(Boolean, nullable=False, default=False)
     use_count = Column(Integer, nullable=False, default=0)
     last_used_at = Column(DateTime(timezone=True), nullable=True)
+
+
+class WidgetSession(Base):
+    """
+    A short-lived, single-use session the partner's SERVER mints so an
+    applicant's browser can use the hosted form without ever seeing an API key.
+    Only the token's hash is stored.
+    """
+    __tablename__ = "widget_sessions"
+
+    id = Column(Integer, primary_key=True, index=True)
+    partner_id = Column(Integer, ForeignKey("partners.id"), nullable=False, index=True)
+    token_hash = Column(String, nullable=False, unique=True, index=True)
+    external_ref = Column(String, nullable=True)
+    allowed_origin = Column(String, nullable=True)   # partner site that may frame the widget
+    prefill_json = Column(Text, nullable=True)
+    created_at = Column(DateTime(timezone=True), default=_now)
+    expires_at = Column(DateTime(timezone=True), nullable=False)
+    referral_id = Column(Integer, ForeignKey("referrals.id"), nullable=True)  # set once submitted

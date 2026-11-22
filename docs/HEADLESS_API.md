@@ -31,13 +31,36 @@ before any credit pull. DOB and address are used for the check/pull and **not st
 The credit score is never returned to partners.
 
 Response: `referral_id`, `status`, `prequalification {matched, lender, likely_range, reasons, blockers}`, `timeline`.
-`likely_range` is `null` until lender loan-size ranges are modeled.
+`likely_range` is `{min,max}` from the matched lender's loan-size limits, or `null` when none are configured
+(set them with `PATCH /admin/lenders/{id}` `min_loan_amount` / `max_loan_amount`; unset = not enforced).
 
 ## Read status
 `GET /v1/referrals/{referral_id}` and `GET /v1/referrals?external_ref=&status=`
 
 Statuses: `received → prequalified → submitted → lender_received → approved → closing → funded`,
 with exits `no_match`, `declined`, `withdrawn`.
+
+## Hosted form + embeddable widget
+For partners with no UI of their own, or who want the consent screen to be ours.
+
+1. **Your server** calls `POST /v1/widget-sessions` with your API key and optional
+   `{external_ref, allowed_origin: "https://app.yoursite.com", prefill: {first_name, last_name, email, legal_name, state, years_in_business, annual_revenue, loan_amount, loan_type}}`.
+   It returns a single-use `token` (valid 30 minutes), `embed_url` and `script_url`.
+2. **The browser** never sees your API key. Embed with either an iframe on `embed_url`, or:
+   ```html
+   <div id="cg"></div>
+   <script src="https://<host>/widget/embed.js"></script>
+   <script>CapitalGooseWidget.mount(document.getElementById('cg'),
+     {token: '<token>', onResult: function (r) { /* {referralId, status, matched} */ }});</script>
+   ```
+   `allowed_origin` is required to frame the widget (it sets `frame-ancestors` and the postMessage target);
+   without it the page only works as a full-page link.
+3. The applicant fills the form and agrees to **our** consent text (we record our wording version, the time and
+   the IP — the browser can't supply them). The referral is created under your partner and the result page is shown.
+   Check status with `GET /v1/referrals?external_ref=...` or webhooks, then continue with documents + submit.
+
+Live partners can't mint sessions until `CONSENT_TEXT_APPROVED=true` is set — only after counsel approves the
+wording in `app/engine/consent.py` (it is a placeholder today).
 
 ## Documents and handoff
 Once a referral is `prequalified`:

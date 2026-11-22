@@ -31,6 +31,8 @@ class LenderCreate(BaseModel):
     cash_flow_requirement: Optional[str] = None
     min_dscr: Optional[float] = None
     min_annual_revenue: Optional[int] = None
+    min_loan_amount: Optional[int] = None
+    max_loan_amount: Optional[int] = None
     years_in_business_required: Optional[int] = 2
     pfs_required: bool = True
     active: bool = True
@@ -50,6 +52,8 @@ class LenderUpdate(BaseModel):
     cash_flow_requirement: Optional[str] = None
     min_dscr: Optional[float] = None
     min_annual_revenue: Optional[int] = None
+    min_loan_amount: Optional[int] = None
+    max_loan_amount: Optional[int] = None
     years_in_business_required: Optional[int] = None
     pfs_required: Optional[bool] = None
     active: Optional[bool] = None
@@ -71,6 +75,8 @@ def lender_to_dict(b: BankProfile):
         "cash_flow_requirement": b.cash_flow_requirement,
         "min_dscr": b.min_dscr,
         "min_annual_revenue": b.min_annual_revenue,
+        "min_loan_amount": b.min_loan_amount,
+        "max_loan_amount": b.max_loan_amount,
         "years_in_business_required": b.years_in_business_required,
         "pfs_required": b.pfs_required,
         "active": b.active,
@@ -87,6 +93,9 @@ def list_lenders(db: Session = Depends(get_db)):
 def create_lender(payload: LenderCreate, db: Session = Depends(get_db)):
     if db.query(BankProfile).filter(BankProfile.name == payload.name).first():
         raise HTTPException(status_code=409, detail="A lender with that name already exists")
+    if payload.min_loan_amount is not None and payload.max_loan_amount is not None \
+            and payload.min_loan_amount > payload.max_loan_amount:
+        raise HTTPException(status_code=422, detail="min_loan_amount can't be greater than max_loan_amount")
     lender = BankProfile(**payload.model_dump())
     db.add(lender)
     db.commit()
@@ -106,6 +115,11 @@ def update_lender(lender_id: int, payload: LenderUpdate, db: Session = Depends(g
     if new_name and new_name != lender.name:
         if db.query(BankProfile).filter(BankProfile.name == new_name).first():
             raise HTTPException(status_code=409, detail="A lender with that name already exists")
+
+    lo = changes.get("min_loan_amount", lender.min_loan_amount)
+    hi = changes.get("max_loan_amount", lender.max_loan_amount)
+    if lo is not None and hi is not None and lo > hi:
+        raise HTTPException(status_code=422, detail="min_loan_amount can't be greater than max_loan_amount")
 
     for field, value in changes.items():
         setattr(lender, field, value)

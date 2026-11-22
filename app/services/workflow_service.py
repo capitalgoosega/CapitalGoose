@@ -73,6 +73,7 @@ def process_package(db, application, data):
         applicant_state,
         financials,
         has_pfs(document_urls),
+        loan_amount=application.loan_amount,
     )
     log_event(db, f"Eligibility check for application {application.id}: {len(eligible)} eligible lender(s)")
 

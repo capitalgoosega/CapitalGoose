@@ -5,9 +5,13 @@ Partner-facing headless API. Authenticated with an X-API-Key header.
   GET  /v1/referrals/{id}    current status and timeline
   GET  /v1/referrals         list your own referrals
 """
+import json
+import os
+from datetime import datetime, timedelta, timezone
 from typing import Optional
 
 from fastapi import APIRouter, Depends, Header, HTTPException, Request
+from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 
 from app.db.session import get_db
@@ -17,8 +21,11 @@ from app.engine.documents import DOC_TYPES, MAX_BYTES, sniff_content_type
 from app.engine.handoff_service import HandoffError, document_summary, handoff, store_document
 from app.engine.referral_service import EngineUnavailable, create_referral, serialize_referral
 from app.engine import statuses as S
+from app.engine.consent import consent_text_approved
+from app.engine.lender_links import hash_link_token
 from app.engine.security import hash_api_key
-from app.models.partner import Partner, Referral
+from app.engine.widget_rules import SESSION_TTL_MINUTES, clean_prefill, valid_origin
+from app.models.partner import Partner, Referral, WidgetSession
 from app.schemas.partner_api import ReferralCreate
 
 router = APIRouter()
@@ -168,3 +175,40 @@ def submit_to_lender(referral_id: str, partner: Partner = Depends(require_partne
     except HandoffError as e:
         raise HTTPException(status_code=409 if "Missing" not in str(e) else 422, detail=str(e))
     return serialize_referral(db, referral)
+
+
+class WidgetSessionCreate(BaseModel):
+    external_ref: Optional[str] = Field(default=None, max_length=100)
+    allowed_origin: Optional[str] = Field(default=None, max_length=200)   # e.g. https://app.partner.com
+    prefill: dict = Field(default_factory=dict)
+
+
+@router.post("/widget-sessions", status_code=201, tags=["partner-api"])
+def create_widget_session(
+    payload: WidgetSessionCreate,
+    partner: Partner = Depends(require_partner),
+    db: Session = Depends(get_db),
+):
+    """
+    Call this from YOUR server. Give the returned `token` to the applicant's browser
+    (iframe src = embed_url). It works once, for 30 minutes, and carries no API key.
+    """
+    import secrets
+    if partner.mode == "live" and not consent_text_approved():
+        raise HTTPException(status_code=503, detail="The hosted form's consent wording is awaiting legal approval, so live sessions are disabled")
+    allow_local = partner.mode != "live"
+    if payload.allowed_origin and not valid_origin(payload.allowed_origin, allow_local=allow_local):
+        raise HTTPException(status_code=422, detail="allowed_origin must be an exact https origin like https://app.example.com")
+    prefill, err = clean_prefill(payload.prefill)
+    if err:
+        raise HTTPException(status_code=422, detail=err)
+
+    token = secrets.token_urlsafe(32)
+    expires = datetime.now(timezone.utc) + timedelta(minutes=SESSION_TTL_MINUTES)
+    db.add(WidgetSession(
+        partner_id=partner.id, token_hash=hash_link_token(token), external_ref=payload.external_ref,
+        allowed_origin=payload.allowed_origin, prefill_json=json.dumps(prefill), expires_at=expires,
+    ))
+    db.commit()
+    base = os.environ.get("APP_BASE_URL", "https://capitalgoose-production.up.railway.app").rstrip("/")
+    return {"token": token, "expires_at": expires, "embed_url": f"{base}/widget/{token}", "script_url": f"{base}/widget/embed.js"}

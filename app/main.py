@@ -40,6 +40,8 @@ with engine.connect() as conn:
     conn.execute(text("ALTER TABLE IF EXISTS bank_profiles ADD COLUMN IF NOT EXISTS geography_status VARCHAR"))
     conn.execute(text("ALTER TABLE IF EXISTS bank_profiles ADD COLUMN IF NOT EXISTS min_dscr DOUBLE PRECISION"))
     conn.execute(text("ALTER TABLE IF EXISTS bank_profiles ADD COLUMN IF NOT EXISTS min_annual_revenue INTEGER"))
+    conn.execute(text("ALTER TABLE IF EXISTS bank_profiles ADD COLUMN IF NOT EXISTS min_loan_amount INTEGER"))
+    conn.execute(text("ALTER TABLE IF EXISTS bank_profiles ADD COLUMN IF NOT EXISTS max_loan_amount INTEGER"))
     conn.execute(text("ALTER TABLE IF EXISTS bank_profiles DROP COLUMN IF EXISTS geographic_scope"))
 
     conn.execute(text("ALTER TABLE IF EXISTS bank_users ALTER COLUMN password_hash DROP NOT NULL"))

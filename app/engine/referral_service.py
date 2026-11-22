@@ -7,6 +7,7 @@ from datetime import datetime, timezone
 
 from app.engine import statuses as S
 from app.engine.credit_provider import PullRequest, get_provider
+from app.engine.loan_range import likely_range
 from app.engine.reasons import match_reasons, no_match_blockers
 from app.engine.security import new_public_id
 from app.engine.webhook_service import enqueue_event
@@ -177,7 +178,7 @@ def create_referral(db, partner, payload, idempotency_key=None, partner_ip=None)
 
     # The Personal Financial Statement is collected at handoff, so don't let its
     # absence rule everyone out at prequalification.
-    eligible = evaluate_lenders(db, application.id, pull.credit_score, business.state, financials, True)
+    eligible = evaluate_lenders(db, application.id, pull.credit_score, business.state, financials, True, loan_amount=loan.amount)
 
     results = (
         db.query(LenderEligibilityResult)
@@ -194,6 +195,7 @@ def create_referral(db, partner, payload, idempotency_key=None, partner_ip=None)
             "matched": True,
             "reasons": match_reasons(checks_by_lender.get(best.name, [])),
             "blockers": [],
+            "likely_range": likely_range(best.min_loan_amount, best.max_loan_amount),
         })
         record_status(db, referral, S.PREQUALIFIED, detail=f"matched {best.name}")
     else:
@@ -224,8 +226,8 @@ def serialize_referral(db, referral, include_internal=False):
         "prequalification": {
             "matched": bool(prequal.get("matched")),
             "lender": referral.lender_name if prequal.get("matched") else None,
-            # Loan-size ranges aren't modeled on lenders yet; null until they are.
-            "likely_range": None,
+            # Null until the lender's loan-size limits are configured.
+            "likely_range": prequal.get("likely_range") if prequal.get("matched") else None,
             "reasons": prequal.get("reasons", []),
             "blockers": prequal.get("blockers", []),
         },

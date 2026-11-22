@@ -187,3 +187,71 @@ def test_full_handoff_and_lender_link_flow(sandbox_key, monkeypatch):
 
     m = client.get("/admin/referrals/metrics/lending-accuracy", headers=ADMIN).json()
     assert m["decline_reasons"].get("collateral", 0) >= 1
+
+
+# ---- loan range + hosted widget ----------------------------------------------
+import json  # noqa: E402
+
+
+def test_likely_range_appears_when_lender_has_limits(sandbox_key):
+    lenders = client.get("/admin/lenders/", headers=ADMIN).json()["lenders"]
+    for l in lenders:
+        client.patch(f"/admin/lenders/{l['id']}", json={"min_loan_amount": 50000, "max_loan_amount": 500000}, headers=ADMIN)
+    assert client.patch(f"/admin/lenders/{lenders[0]['id']}",
+                        json={"min_loan_amount": 9, "max_loan_amount": 1}, headers=ADMIN).status_code == 422
+    for _ in range(60):
+        body = client.post("/v1/referrals", json=_payload(), headers={"X-API-Key": sandbox_key}).json()
+        if body["status"] == "prequalified":
+            assert body["prequalification"]["likely_range"] == {"min": 50000, "max": 500000}
+            break
+    big = _payload()
+    big["loan"]["amount"] = 5_000_000
+    assert client.post("/v1/referrals", json=big, headers={"X-API-Key": sandbox_key}).json()["status"] == "no_match"
+
+
+def _widget_body(**over):
+    p = _payload()
+    body = {"applicant": p["applicant"], "business": p["business"], "loan": p["loan"],
+            "signer_name": "Test Owner", "consent_accepted": True}
+    body.update(over)
+    return body
+
+
+def test_widget_session_and_submit_flow(sandbox_key):
+    h = {"X-API-Key": sandbox_key}
+    assert client.post("/v1/widget-sessions", json={"prefill": {"ssn": "1"}}, headers=h).status_code == 422
+    assert client.post("/v1/widget-sessions", json={"allowed_origin": "https://evil.com/x"}, headers=h).status_code == 422
+
+    s = client.post("/v1/widget-sessions", headers=h, json={
+        "external_ref": "w-1", "allowed_origin": "https://app.partner.com", "prefill": {"first_name": "Pat"}})
+    assert s.status_code == 201, s.text
+    token = s.json()["token"]
+
+    page = client.get(f"/widget/{token}")
+    assert page.status_code == 200 and "Pat" in page.text
+    csp = page.headers["content-security-policy"]
+    assert "frame-ancestors https://app.partner.com" in csp and "unsafe-inline" not in csp
+    assert "style=" not in page.text.replace("style nonce", "")        # CSP blocks inline style attributes
+
+    assert client.post(f"/widget/{token}/submit", json=_widget_body(consent_accepted=False)).status_code == 422
+    done = client.post(f"/widget/{token}/submit", json=_widget_body())
+    assert done.status_code == 200, done.text
+    assert client.post(f"/widget/{token}/submit", json=_widget_body()).status_code == 409   # single use
+
+    result = client.get(f"/widget/{token}")
+    assert result.status_code == 200 and ("may qualify" in result.text or "couldn't match" in result.text)
+    refs = client.get("/v1/referrals?external_ref=w-1", headers=h).json()["referrals"]
+    assert len(refs) == 1
+
+
+def test_widget_bad_tokens_and_embed_script():
+    assert client.get("/widget/not-a-token").status_code == 404
+    assert client.post("/widget/not-a-token/submit", json={}).status_code == 404
+    js = client.get("/widget/embed.js")
+    assert js.status_code == 200 and "CapitalGooseWidget" in js.text
+
+
+def test_live_widget_sessions_blocked_until_consent_text_approved(monkeypatch):
+    monkeypatch.delenv("CONSENT_TEXT_APPROVED", raising=False)
+    live = client.post("/admin/partners", json={"name": "Live Widget Partner", "mode": "live"}, headers=ADMIN).json()["api_key"]
+    assert client.post("/v1/widget-sessions", json={}, headers={"X-API-Key": live}).status_code == 503

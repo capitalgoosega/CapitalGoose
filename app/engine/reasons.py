@@ -11,6 +11,7 @@ PASS_TEXT = {
     "years_in_business": "Time in business meets the lender's minimum",
     "annual_revenue": "Annual revenue meets the lender's minimum",
     "dscr": "Cash flow covers existing debt payments",
+    "loan_amount": "Requested amount is within this lender's range",
     "pfs": "Personal Financial Statement will be required at handoff",
 }
 
@@ -20,6 +21,7 @@ BLOCKER_TEXT = {
     "years_in_business": "Time in business is under our lenders' minimums",
     "annual_revenue": "Annual revenue is under our lenders' minimums",
     "dscr": "Cash flow does not cover existing debt payments for our lenders",
+    "loan_amount": "Requested amount is outside what our lenders fund",
     "pfs": "A Personal Financial Statement is required",
 }
 

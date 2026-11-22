@@ -139,3 +139,38 @@ def test_lender_link_tokens_and_actions():
     assert [s for s, _ in allowed_actions(S.CLOSING)] == [S.FUNDED, S.DECLINED]
     assert allowed_actions(S.FUNDED) == [] and allowed_actions(S.DECLINED) == []
     assert allowed_actions(S.PREQUALIFIED) != [] and S.SUBMITTED not in [s for s, _ in allowed_actions(S.PREQUALIFIED)]
+
+
+# ---- loan range + widget rules -------------------------------------------------
+from app.engine.loan_range import check_loan_amount, likely_range  # noqa: E402
+from app.engine.widget_rules import clean_prefill, valid_origin  # noqa: E402
+
+
+def test_loan_range_checks():
+    assert check_loan_amount(None, None, 100_000) is None            # no limits configured: not enforced
+    assert check_loan_amount(50_000, 500_000, 250_000)[0] == "pass"
+    assert check_loan_amount(50_000, 500_000, 10_000)[0] == "fail"
+    assert check_loan_amount(50_000, 500_000, 900_000)[0] == "fail"
+    assert check_loan_amount(50_000, None, 60_000)[0] == "pass"      # open-ended
+    assert check_loan_amount(50_000, 500_000, None)[0] == "unknown"
+    assert likely_range(None, None) is None
+    assert likely_range(50_000, 500_000) == {"min": 50_000, "max": 500_000}
+
+
+def test_widget_origin_validation():
+    assert valid_origin("https://app.partner.com")
+    assert valid_origin("https://app.partner.com:8443")
+    for bad in ("http://app.partner.com", "https://app.partner.com/path", "https://", "*",
+                "https://a.com; script-src *", "javascript:alert(1)", ""):
+        assert not valid_origin(bad), bad
+    assert not valid_origin("http://localhost:3000")
+    assert valid_origin("http://localhost:3000", allow_local=True)
+
+
+def test_widget_prefill_whitelist():
+    ok, err = clean_prefill({"first_name": " Pat ", "loan_amount": 250000})
+    assert err is None and ok == {"first_name": "Pat", "loan_amount": "250000"}
+    assert clean_prefill({"ssn": "123"})[1]                       # unknown field rejected
+    assert clean_prefill({"email": ["x"]})[1]                     # wrong type rejected
+    assert clean_prefill({"email": "x" * 500})[1]                 # too long rejected
+    assert clean_prefill("nope")[1]
