@@ -138,3 +138,8 @@ Only the current window is sent (no bursts after downtime), each follow-up at mo
 
 Admin: `POST /admin/referrals/followups/run` (send due ones now), `GET /admin/referrals/checkins/list`.
 Borrower answers are recorded for review; they do not change a referral's status (the lender remains the source of truth).
+
+## Outcomes export and sandbox separation
+
+- `GET /admin/referrals/metrics/lending-accuracy` now counts **live partners only** (sandbox test data never inflates the 50% goal). Add `?include_sandbox=true` to see everything.
+- `GET /admin/referrals/outcomes/export` returns de-identified rows (lender, state, industry, credit score and its basis, financials, outcome, decline reason code, dates) for training the in-house decision model. No names, emails, addresses or free-text notes. Live partners only unless `?include_sandbox=true`. Rows with `credit_basis: self_reported` should be treated as lower quality than bureau data.
