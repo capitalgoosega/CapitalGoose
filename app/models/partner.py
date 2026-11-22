@@ -80,6 +80,7 @@ class StatusEvent(Base):
     status = Column(String, nullable=False)
     source = Column(String, nullable=False, default="engine")  # engine | admin | lender
     detail = Column(String, nullable=True)  # internal note; never sent to partners
+    reason_code = Column(String, nullable=True)  # lender decline reason (internal outcome data)
     created_at = Column(DateTime(timezone=True), default=_now, index=True)
 
 
@@ -99,3 +100,22 @@ class WebhookDelivery(Base):
     last_error = Column(String, nullable=True)
     created_at = Column(DateTime(timezone=True), default=_now)
     delivered_at = Column(DateTime(timezone=True), nullable=True)
+
+
+class LenderStatusLink(Base):
+    """
+    A no-login link a lender uses to report milestones for ONE referral.
+    The token is a capability: only its hash is stored, and it is revoked
+    once the referral reaches funded or declined.
+    """
+    __tablename__ = "lender_status_links"
+
+    id = Column(Integer, primary_key=True, index=True)
+    referral_id = Column(Integer, ForeignKey("referrals.id"), nullable=False, index=True)
+    bank_profile_id = Column(Integer, ForeignKey("bank_profiles.id"), nullable=True)
+    token_hash = Column(String, nullable=False, unique=True, index=True)
+    created_at = Column(DateTime(timezone=True), default=_now)
+    expires_at = Column(DateTime(timezone=True), nullable=False)
+    revoked = Column(Boolean, nullable=False, default=False)
+    use_count = Column(Integer, nullable=False, default=0)
+    last_used_at = Column(DateTime(timezone=True), nullable=True)

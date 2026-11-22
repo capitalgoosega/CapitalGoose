@@ -11,5 +11,6 @@ class DocumentBlob(Base):
   application_id = Column(Integer, ForeignKey("applications.id"), nullable=False, index=True)
   filename = Column(String, nullable=False)
   content_type = Column(String, nullable=True)
+  doc_type = Column(String, nullable=True)  # e.g. bank_statement; set for API uploads
   content = Column(LargeBinary, nullable=False)
   created_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))

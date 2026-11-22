@@ -13,7 +13,10 @@ from sqlalchemy.orm import Session
 from app.db.session import get_db
 from app.engine.credit_provider import ProviderNotConfigured
 from app.engine.ratelimit import SlidingWindowLimiter
+from app.engine.documents import DOC_TYPES, MAX_BYTES, sniff_content_type
+from app.engine.handoff_service import HandoffError, document_summary, handoff, store_document
 from app.engine.referral_service import EngineUnavailable, create_referral, serialize_referral
+from app.engine import statuses as S
 from app.engine.security import hash_api_key
 from app.models.partner import Partner, Referral
 from app.schemas.partner_api import ReferralCreate
@@ -99,3 +102,69 @@ def list_referrals(
         q = q.filter(Referral.status == status)
     rows = q.order_by(Referral.id.desc()).limit(max(1, min(limit, 200))).all()
     return {"referrals": [serialize_referral(db, r) for r in rows]}
+
+
+def _own_referral(db, partner, referral_id):
+    referral = (
+        db.query(Referral)
+        .filter(Referral.public_id == referral_id, Referral.partner_id == partner.id)
+        .first()
+    )
+    if not referral:
+        raise HTTPException(status_code=404, detail="Referral not found")
+    return referral
+
+
+@router.put("/referrals/{referral_id}/documents/{doc_type}", status_code=201, tags=["partner-api"])
+async def upload_document(
+    referral_id: str,
+    doc_type: str,
+    request: Request,
+    filename: str,
+    partner: Partner = Depends(require_partner),
+    db: Session = Depends(get_db),
+):
+    """Raw file bytes in the request body (PDF, PNG or JPEG, up to 15 MB)."""
+    referral = _own_referral(db, partner, referral_id)
+    if doc_type not in DOC_TYPES:
+        raise HTTPException(status_code=422, detail=f"doc_type must be one of {sorted(DOC_TYPES)}")
+    if referral.status != S.PREQUALIFIED:
+        raise HTTPException(status_code=409, detail="Documents can only be added to a prequalified referral")
+    declared = request.headers.get("content-length")
+    if declared and declared.isdigit() and int(declared) > MAX_BYTES:
+        raise HTTPException(status_code=413, detail="File is larger than 15 MB")
+    data = await request.body()
+    if not data:
+        raise HTTPException(status_code=422, detail="Empty file")
+    if len(data) > MAX_BYTES:
+        raise HTTPException(status_code=413, detail="File is larger than 15 MB")
+    content_type = sniff_content_type(data)
+    if not content_type:
+        raise HTTPException(status_code=415, detail="Only PDF, PNG or JPEG files are accepted")
+    try:
+        blob = store_document(db, referral, doc_type, filename, data, content_type)
+    except HandoffError as e:
+        raise HTTPException(status_code=409, detail=str(e))
+    summary = document_summary(db, referral)
+    return {"document_id": blob.id, "doc_type": doc_type, "missing": summary["missing"]}
+
+
+@router.get("/referrals/{referral_id}/documents", tags=["partner-api"])
+def list_referral_documents(referral_id: str, partner: Partner = Depends(require_partner), db: Session = Depends(get_db)):
+    return document_summary(db, _own_referral(db, partner, referral_id))
+
+
+@router.post("/referrals/{referral_id}/submit", tags=["partner-api"])
+def submit_to_lender(referral_id: str, partner: Partner = Depends(require_partner), db: Session = Depends(get_db)):
+    """Tell us the file is complete. We hand it to the matched lender and track it from here."""
+    referral = _own_referral(db, partner, referral_id)
+    if referral.status in S.FORWARD_PATH and S.FORWARD_PATH.index(referral.status) >= S.FORWARD_PATH.index(S.SUBMITTED):
+        # Already handed off (or further along): safe to call twice.
+        body = serialize_referral(db, referral)
+        body["idempotent_replay"] = True
+        return body
+    try:
+        handoff(db, referral)
+    except HandoffError as e:
+        raise HTTPException(status_code=409 if "Missing" not in str(e) else 422, detail=str(e))
+    return serialize_referral(db, referral)

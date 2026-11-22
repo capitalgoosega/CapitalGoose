@@ -125,3 +125,65 @@ def test_revoked_key_stops_working():
     assert client.get("/v1/referrals", headers={"X-API-Key": key}).status_code == 200
     client.post(f"/admin/partners/{created['id']}/revoke", headers=ADMIN)
     assert client.get("/v1/referrals", headers={"X-API-Key": key}).status_code == 401
+
+
+# ---- documents, handoff, lender status link ----------------------------------
+import re  # noqa: E402
+
+PDF = b"%PDF-1.4\n% test file\n"
+
+
+def _prequalified(key):
+    for _ in range(60):
+        body = client.post("/v1/referrals", json=_payload(), headers={"X-API-Key": key}).json()
+        if body["status"] == "prequalified":
+            return body["referral_id"]
+    pytest.skip("no seeded lender matched this profile")
+
+
+def test_upload_validation_and_submit_requires_documents(sandbox_key, monkeypatch):
+    sent = []
+    monkeypatch.setattr("app.engine.handoff_service.send_lender_handoff_email", lambda *a: sent.append(a))
+    h = {"X-API-Key": sandbox_key}
+    ref = _prequalified(sandbox_key)
+
+    bad = client.put(f"/v1/referrals/{ref}/documents/bank_statement?filename=x.exe", content=b"MZ not a pdf", headers=h)
+    assert bad.status_code == 415
+    assert client.put(f"/v1/referrals/{ref}/documents/nonsense?filename=x.pdf", content=PDF, headers=h).status_code == 422
+
+    assert client.post(f"/v1/referrals/{ref}/submit", headers=h).status_code == 422   # nothing uploaded yet
+    ok = client.put(f"/v1/referrals/{ref}/documents/bank_statement?filename=jan.pdf", content=PDF, headers=h)
+    assert ok.status_code == 201 and "bank_statement" not in ok.json()["missing"]
+    assert sent == []   # nothing emailed before submit
+
+
+def test_full_handoff_and_lender_link_flow(sandbox_key, monkeypatch):
+    sent = []
+    monkeypatch.setattr("app.engine.handoff_service.send_lender_handoff_email", lambda *a: sent.append(a))
+    monkeypatch.setenv("TEST_RECIPIENT_EMAIL", "inbox@example.com")   # sandbox referrals go here, never to a lender
+    h = {"X-API-Key": sandbox_key}
+    ref = _prequalified(sandbox_key)
+    for t in ("bank_statement", "tax_return", "government_id", "personal_financial_statement"):
+        assert client.put(f"/v1/referrals/{ref}/documents/{t}?filename={t}.pdf", content=PDF, headers=h).status_code == 201
+
+    r = client.post(f"/v1/referrals/{ref}/submit", headers=h)
+    assert r.status_code == 200 and r.json()["status"] == "submitted"
+    assert client.post(f"/v1/referrals/{ref}/submit", headers=h).json()["idempotent_replay"] is True
+    assert len(sent) == 1 and sent[0][0] == "inbox@example.com"
+    token = re.search(r"/lender-status/([\w-]+)", sent[0][3]).group(1)
+
+    # GET only shows the page; it must not change anything (email scanners open links).
+    page = client.get(f"/lender-status/{token}")
+    assert page.status_code == 200 and "no-store" in page.headers["cache-control"]
+    assert client.get(f"/v1/referrals/{ref}", headers=h).json()["status"] == "submitted"
+
+    assert client.post(f"/lender-status/{token}", content="status=declined").status_code == 422   # reason required
+    assert client.post(f"/lender-status/{token}", content="status=approved").status_code == 200
+    assert client.post(f"/lender-status/{token}", content="status=lender_received").status_code == 409   # no going back
+    done = client.post(f"/lender-status/{token}", content="status=declined&reason_code=collateral")
+    assert done.status_code == 200
+    assert client.get(f"/lender-status/{token}").status_code == 404   # link retired after a final outcome
+    assert client.get("/lender-status/not-a-real-token").status_code == 404
+
+    m = client.get("/admin/referrals/metrics/lending-accuracy", headers=ADMIN).json()
+    assert m["decline_reasons"].get("collateral", 0) >= 1

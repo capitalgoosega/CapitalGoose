@@ -191,3 +191,26 @@ def send_bank_invitation_email(recipient_email, activation_url, bank_name, expir
         "Capital Goose – Activate Your Secure Portal Account",
         body,
     )
+
+
+def send_lender_handoff_email(recipient_email, bank_name, code, status_url):
+    # No applicant information in the email: the file is behind the portal login.
+    portal_url = f"https://capitalgoose-production.up.railway.app/bank-portal/access?code={code}"
+    body = (
+        "Hello,\n\n"
+        "Capital Goose has a completed, pre-screened application ready for your review.\n\n"
+        f"Access Code: {code}\n\n"
+        f"Review the file in the secure portal: {portal_url}\n\n"
+        "When you have an update, you can report it in one step - no login needed. "
+        "This link is private to this application; please do not forward it:\n\n"
+        f"{status_url}\n\n"
+        "Updates we ask for: file received, approved, closing, funded, or declined "
+        "(with a reason). They help us send you better-matched files.\n\n"
+        "Best regards,\n\n"
+        "Capital Goose Team"
+    )
+    send_email(
+        recipient_email,
+        "New Qualified Applicant from Capital Goose - Ready for Review",
+        body,
+    )

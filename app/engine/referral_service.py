@@ -30,7 +30,7 @@ def _now():
     return datetime.now(timezone.utc)
 
 
-def record_status(db, referral, new_status, detail=None, source="engine", force=False):
+def record_status(db, referral, new_status, detail=None, source="engine", force=False, reason_code=None):
     """Moves a referral to a new status, writes the history row, queues the webhook."""
     if not force and not S.can_transition(referral.status, new_status):
         raise InvalidTransition(f"cannot move from '{referral.status}' to '{new_status}'")
@@ -46,7 +46,7 @@ def record_status(db, referral, new_status, detail=None, source="engine", force=
     elif new_status == S.WITHDRAWN:
         referral.withdrawn_at = now
 
-    db.add(StatusEvent(referral_id=referral.id, status=new_status, source=source, detail=detail))
+    db.add(StatusEvent(referral_id=referral.id, status=new_status, source=source, detail=detail, reason_code=reason_code))
 
     mapped = S.APPLICATION_STATUS.get(new_status)
     if mapped:
@@ -236,7 +236,7 @@ def serialize_referral(db, referral, include_internal=False):
         out["application_id"] = referral.application_id
         out["business_state"] = referral.business_state
         out["timeline"] = [
-            {"status": e.status, "at": e.created_at, "source": e.source, "detail": e.detail}
+            {"status": e.status, "at": e.created_at, "source": e.source, "detail": e.detail, "reason_code": e.reason_code}
             for e in events
         ]
     return out

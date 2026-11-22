@@ -39,6 +39,28 @@ Response: `referral_id`, `status`, `prequalification {matched, lender, likely_ra
 Statuses: `received → prequalified → submitted → lender_received → approved → closing → funded`,
 with exits `no_match`, `declined`, `withdrawn`.
 
+## Documents and handoff
+Once a referral is `prequalified`:
+
+- `PUT /v1/referrals/{id}/documents/{doc_type}?filename=jan.pdf` — raw file bytes as the body
+  (PDF, PNG or JPEG, max 15 MB, 20 files). `doc_type`: `bank_statement`, `tax_return`, `government_id`,
+  `personal_financial_statement`, `other`. Files are checked by their real header bytes and stored encrypted.
+- `GET /v1/referrals/{id}/documents` — what's uploaded, what's required, what's `missing`
+  (the Personal Financial Statement is required only if the matched lender requires it).
+- `POST /v1/referrals/{id}/submit` — says the file is complete. We email the matched lender a portal access
+  code and a private status link (no applicant data in the email), and the referral becomes `submitted`.
+  Safe to call twice. `422` lists missing documents.
+
+**Sandbox keys never contact real lenders**: the handoff goes to `TEST_RECIPIENT_EMAIL`, or is suppressed if unset.
+
+## Lender status links
+The handoff email contains a private link. The page only *shows* status on GET (so email scanners can't change
+anything); the lender presses a button — received / approved / closing / funded / declined — to record it.
+Declines require a reason (credit, cash flow, collateral, time in business, documentation, policy, applicant
+stopped responding, other). The link is retired after funded/declined. Reasons appear in
+`GET /admin/referrals/metrics/lending-accuracy` under `decline_reasons` — the data for tuning lender rules.
+`POST /admin/referrals/{id}/resend-handoff` issues a fresh code + link and revokes the old ones.
+
 ## Webhooks
 If a webhook URL is configured (`PUT /admin/partners/{id}/webhook`, https only, public hosts only),
 every status change posts `{"id","type":"referral.<status>","created_at","data":{referral_id,external_ref,status}}`.
@@ -54,6 +76,6 @@ Reject if `t` is more than 5 minutes old. Any 2xx acknowledges; otherwise we ret
 
 ## Not built yet (next slices)
 Real credit provider (CRS/Array), loan-size ranges per lender, hosted pre-qual form + embeddable
-widget, document upload through the API, one-tap lender status links, 30/60/90-day borrower
-check-ins, partner portal, local-model document extraction, de-identified outcome dataset.
+widget (needs short-lived widget tokens so API keys never sit in a browser), automated weekly lender
+follow-ups, 30/60/90-day borrower check-ins, partner portal, local-model document extraction, de-identified outcome dataset.
 Counsel must sign off on the consent wording, FCRA permissible purpose, and Form 159 terms before any live pull.

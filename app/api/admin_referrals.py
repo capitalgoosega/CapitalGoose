@@ -10,7 +10,9 @@ from app.db.session import get_db
 from app.engine import statuses as S
 from app.engine.metrics import accuracy_summary
 from app.engine.referral_service import InvalidTransition, record_status, serialize_referral
-from app.models.partner import Referral, WebhookDelivery
+from app.models.bank_profile import BankProfile
+from app.models.partner import Referral, StatusEvent, WebhookDelivery
+from app.engine.handoff_service import HandoffError, send_handoff
 from app.services.audit_service import log_event
 
 router = APIRouter()
@@ -49,12 +51,21 @@ def lending_accuracy(partner_id: Optional[int] = None, db: Session = Depends(get
             q = q.filter(c)
         return q.scalar() or 0
 
-    return accuracy_summary(
+    out = accuracy_summary(
         submitted=count(),
         funded=count(Referral.status == S.FUNDED),
         declined=count(Referral.status == S.DECLINED),
         withdrawn=count(Referral.status == S.WITHDRAWN),
     )
+    # Why lenders say no: the raw material for improving the lender rules.
+    reasons = (
+        db.query(StatusEvent.reason_code, func.count(StatusEvent.id))
+        .filter(StatusEvent.status == S.DECLINED, StatusEvent.source == "lender")
+        .group_by(StatusEvent.reason_code)
+        .all()
+    )
+    out["decline_reasons"] = {(code or "unspecified"): n for code, n in reasons}
+    return out
 
 
 @router.get("/webhooks/deliveries")
@@ -80,6 +91,24 @@ def retry_delivery(event_id: str, db: Session = Depends(get_db)):
     d.status, d.attempts, d.next_attempt_at = "pending", 0, datetime.now(timezone.utc)
     db.commit()
     return {"event_id": d.event_id, "status": d.status}
+
+
+@router.post("/{public_id}/resend-handoff")
+def resend_handoff(public_id: str, db: Session = Depends(get_db)):
+    """Issues a fresh access code + status link and re-emails the lender (old ones are revoked)."""
+    r = db.query(Referral).filter(Referral.public_id == public_id).first()
+    if not r:
+        raise HTTPException(status_code=404, detail="Referral not found")
+    if r.status not in (S.SUBMITTED, S.LENDER_RECEIVED, S.APPROVED, S.CLOSING):
+        raise HTTPException(status_code=409, detail=f"Nothing to resend while the referral is '{r.status}'")
+    lender = db.query(BankProfile).filter(BankProfile.name == r.lender_name).first()
+    if not lender:
+        raise HTTPException(status_code=409, detail="Matched lender no longer exists")
+    try:
+        send_handoff(db, r, lender)
+    except HandoffError as e:
+        raise HTTPException(status_code=409, detail=str(e))
+    return {"referral_id": r.public_id, "resent_to": lender.name}
 
 
 @router.get("/{public_id}")

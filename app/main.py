@@ -33,6 +33,8 @@ from app.models import partner as _partner_models  # noqa: F401  (partners, refe
 # One-time additive migrations. Safe to run on every startup.
 with engine.connect() as conn:
     conn.execute(text("ALTER TABLE IF EXISTS document_access_grants ADD COLUMN IF NOT EXISTS bank_profile_id INTEGER"))
+    conn.execute(text("ALTER TABLE IF EXISTS document_blobs ADD COLUMN IF NOT EXISTS doc_type VARCHAR"))
+    conn.execute(text("ALTER TABLE IF EXISTS referral_status_events ADD COLUMN IF NOT EXISTS reason_code VARCHAR"))
 
     conn.execute(text("ALTER TABLE IF EXISTS bank_profiles ADD COLUMN IF NOT EXISTS allowed_states VARCHAR"))
     conn.execute(text("ALTER TABLE IF EXISTS bank_profiles ADD COLUMN IF NOT EXISTS geography_status VARCHAR"))

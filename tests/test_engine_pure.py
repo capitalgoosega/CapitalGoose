@@ -98,3 +98,44 @@ def test_rate_limiter_window():
     assert lim.allow("other")
     t[0] = 10.0
     assert lim.allow("k")
+
+
+# ---- documents + lender links -------------------------------------------------
+from app.engine.documents import (  # noqa: E402
+    required_doc_types, missing_doc_types, sniff_content_type, safe_filename,
+)
+from app.engine.lender_links import allowed_actions, hash_link_token, new_link_token  # noqa: E402
+
+
+def test_required_docs_and_missing():
+    assert "personal_financial_statement" in required_doc_types(True)
+    assert "personal_financial_statement" not in required_doc_types(False)
+    req = required_doc_types(True)
+    assert missing_doc_types(["bank_statement", "tax_return"], req) == ["government_id", "personal_financial_statement"]
+    assert missing_doc_types(req, req) == []
+
+
+def test_sniff_by_magic_bytes_not_claims():
+    assert sniff_content_type(b"%PDF-1.7 ...") == "application/pdf"
+    assert sniff_content_type(b"\x89PNG\r\n\x1a\nxx") == "image/png"
+    assert sniff_content_type(b"\xff\xd8\xffxx") == "image/jpeg"
+    assert sniff_content_type(b"MZ\x90\x00 an exe") is None
+    assert sniff_content_type(b"<html><script>") is None
+
+
+def test_safe_filename():
+    assert safe_filename("../../etc/passwd") == "passwd"
+    assert safe_filename("C:\\Users\\x\\Statement Jan.pdf") == "Statement Jan.pdf"
+    assert safe_filename("<script>.pdf") == "_script_.pdf"
+    assert safe_filename("") == "document" and len(safe_filename("a" * 500)) == 100
+
+
+def test_lender_link_tokens_and_actions():
+    token, h = new_link_token()
+    assert h == hash_link_token(token) and token not in h and len(token) >= 40
+    assert new_link_token()[0] != token
+    assert [s for s, _ in allowed_actions(S.SUBMITTED)] == [
+        S.LENDER_RECEIVED, S.APPROVED, S.CLOSING, S.FUNDED, S.DECLINED]
+    assert [s for s, _ in allowed_actions(S.CLOSING)] == [S.FUNDED, S.DECLINED]
+    assert allowed_actions(S.FUNDED) == [] and allowed_actions(S.DECLINED) == []
+    assert allowed_actions(S.PREQUALIFIED) != [] and S.SUBMITTED not in [s for s, _ in allowed_actions(S.PREQUALIFIED)]
