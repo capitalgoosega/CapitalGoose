@@ -143,3 +143,9 @@ Borrower answers are recorded for review; they do not change a referral's status
 
 - `GET /admin/referrals/metrics/lending-accuracy` now counts **live partners only** (sandbox test data never inflates the 50% goal). Add `?include_sandbox=true` to see everything.
 - `GET /admin/referrals/outcomes/export` returns de-identified rows (lender, state, industry, credit score and its basis, financials, outcome, decline reason code, dates) for training the in-house decision model. No names, emails, addresses or free-text notes. Live partners only unless `?include_sandbox=true`. Rows with `credit_basis: self_reported` should be treated as lower quality than bureau data.
+
+## Demo app (for showing partners)
+
+Set `DEMO_ENABLED=true` on Railway, then open `/demo`: a pretend contractor app (BuildRight) that embeds the real
+widget in sandbox mode, with a live API-call log, file-status timeline and "play the lender" buttons. Practice data only;
+lender emails go to `TEST_RECIPIENT_EMAIL` or are suppressed. Remove `DEMO_ENABLED` when you are done showing it.
