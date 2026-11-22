@@ -1,12 +1,9 @@
 """
 Consent wording shown in the Capital Goose-hosted widget.
 
-STATUS: DRAFT for attorney review. This wording was drafted by Claude (an AI
-assistant), not by a lawyer, and is not legal advice. Do not treat it as approved
-until counsel has confirmed it (FCRA permissible purpose / written authorization,
-E-SIGN consent, Safeguards Rule, state commercial-financing and broker rules,
-and the SBA Form 159 fee disclosure). Live partners cannot create widget sessions
-until someone sets CONSENT_TEXT_APPROVED=true in Railway after that review.
+STATUS: APPROVED by Capital Goose's attorney (confirmed by Karon on 2026-11-22 as
+exactly the text below, drafted originally by Claude). Not legal advice from Claude.
+Live partners can create widget sessions once CONSENT_TEXT_APPROVED=true is set in Railway.
 
 WHENEVER THE TEXT CHANGES, change CONSENT_VERSION too: every referral stores the
 version string the applicant agreed to, which is the audit trail.
@@ -15,7 +12,7 @@ Paragraphs are separated by a blank line and rendered as separate paragraphs.
 """
 import os
 
-CONSENT_VERSION = "widget-2026-11-v2-draft"
+CONSENT_VERSION = "widget-2026-11-v2"
 
 CONSENT_TEXT = (
     "By checking the box and typing my name below, I authorize Capital Goose and the lenders "
