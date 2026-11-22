@@ -14,6 +14,7 @@ from app.services.eligibility_service import (
     evaluate_lenders,
 )
 from app.services.audit_service import log_event
+from app.engine.referral_service import sync_application_status
 from app.services.document_vault_service import ingest_application_documents, create_access_grant
 
 COLLECTION_FORM_URL = "https://www.cognitoforms.com/capitalgoose1/documentuploadform"
@@ -85,6 +86,8 @@ def process_package(db, application, data):
 
     application.lender = matched_bank.name
     application.status = "submitted"
+    db.commit()
+    sync_application_status(db, application.id, "submitted", detail=f"package sent to {matched_bank.name}")
 
     if document_urls:
         ingest_application_documents(db, application.id, document_urls)

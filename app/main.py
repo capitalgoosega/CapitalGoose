@@ -27,6 +27,7 @@ from app.api.routes import router
 from app.db.session import Base, engine, SessionLocal
 from app.models.bank_profile import BankProfile
 from app.models.bank_user import BankUser  # noqa: F401  (makes sure the table gets created)
+from app.models import partner as _partner_models  # noqa: F401  (partners, referrals, consents, status events, webhooks)
 
 
 # One-time additive migrations. Safe to run on every startup.
@@ -181,6 +182,10 @@ app = FastAPI(
 
 
 app.include_router(router)
+
+# Delivers queued partner webhooks (with retries). Set DISABLE_WEBHOOK_WORKER=1 to turn off.
+from app.engine.webhook_service import start_worker
+start_worker(SessionLocal)
 
 
 @app.get("/")
