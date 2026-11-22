@@ -44,3 +44,18 @@ def safe_filename(name: str, fallback: str = "document") -> str:
     base = (name or "").replace("\\", "/").split("/")[-1]
     base = re.sub(r"[^A-Za-z0-9._ -]", "_", base).strip(" .")
     return (base or fallback)[:100]
+
+
+def check_upload(data: bytes):
+    """
+    Shared by the partner API and the hosted widget.
+    Returns (content_type, None, None) if OK, else (None, http_status, message).
+    """
+    if not data:
+        return None, 422, "Empty file"
+    if len(data) > MAX_BYTES:
+        return None, 413, "File is larger than 15 MB"
+    content_type = sniff_content_type(data)
+    if not content_type:
+        return None, 415, "Only PDF, PNG or JPEG files are accepted"
+    return content_type, None, None

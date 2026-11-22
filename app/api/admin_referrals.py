@@ -11,7 +11,7 @@ from app.engine import statuses as S
 from app.engine.metrics import accuracy_summary
 from app.engine.referral_service import InvalidTransition, record_status, serialize_referral
 from app.models.bank_profile import BankProfile
-from app.models.partner import Referral, StatusEvent, WebhookDelivery
+from app.models.partner import BorrowerCheckin, Referral, StatusEvent, WebhookDelivery
 from app.engine.handoff_service import HandoffError, send_handoff
 from app.services.audit_service import log_event
 
@@ -40,6 +40,27 @@ def list_referrals(
 
 
 # NOTE: fixed paths must stay above /{public_id}.
+@router.post("/followups/run")
+def run_followups(db: Session = Depends(get_db)):
+    """Send any due lender reminders and borrower check-ins now (the hourly worker does this too)."""
+    from app.engine.followup_service import run_due
+    return {"sent": run_due(db)}
+
+
+@router.get("/checkins/list")
+def list_checkins(limit: int = 100, db: Session = Depends(get_db)):
+    """Borrowers' one-tap answers, newest first."""
+    rows = (
+        db.query(BorrowerCheckin, Referral)
+        .join(Referral, Referral.id == BorrowerCheckin.referral_id)
+        .order_by(BorrowerCheckin.id.desc()).limit(max(1, min(limit, 500))).all()
+    )
+    return {"checkins": [
+        {"referral_id": r.public_id, "status": r.status, "lender": r.lender_name, "answer": c.answer, "at": c.created_at}
+        for c, r in rows
+    ]}
+
+
 @router.get("/metrics/lending-accuracy")
 def lending_accuracy(partner_id: Optional[int] = None, db: Session = Depends(get_db)):
     """Funded loans / fully submitted applications (credit pulls and abandoned forms don't count)."""

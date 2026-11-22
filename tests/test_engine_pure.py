@@ -174,3 +174,44 @@ def test_widget_prefill_whitelist():
     assert clean_prefill({"email": ["x"]})[1]                     # wrong type rejected
     assert clean_prefill({"email": "x" * 500})[1]                 # too long rejected
     assert clean_prefill("nope")[1]
+
+
+# ---- credit bands, upload check, follow-ups ----------------------------------
+from datetime import datetime, timedelta, timezone  # noqa: E402
+
+from app.engine.credit_bands import BANDS, band_to_score  # noqa: E402
+from app.engine.documents import check_upload  # noqa: E402
+from app.engine.followups import due_followups  # noqa: E402
+
+
+def test_credit_bands_are_conservative_lower_bounds():
+    assert band_to_score("720_plus") == 720 and band_to_score("580_649") == 580
+    assert band_to_score("below_580") < 580
+    assert band_to_score("bogus") is None and band_to_score(None) is None
+    assert sorted(BANDS.values()) == list(BANDS.values())
+
+
+def test_check_upload():
+    assert check_upload(b"%PDF-1.7 x")[0] == "application/pdf"
+    assert check_upload(b"")[1] == 422
+    assert check_upload(b"MZ binary")[1] == 415
+    assert check_upload(b"%PDF-" + b"0" * (15 * 1024 * 1024))[1] == 413
+
+
+def test_followups_schedule():
+    t0 = datetime(2026, 1, 1, tzinfo=timezone.utc)
+    d = lambda days: t0 + timedelta(days=days)   # noqa: E731
+    assert due_followups(d(3), t0, S.SUBMITTED, []) == []
+    assert due_followups(d(7), t0, S.SUBMITTED, []) == ["lender_w1"]
+    assert due_followups(d(7), t0, S.SUBMITTED, ["lender_w1"]) == []
+    # Down for a month: only the current week, never a burst.
+    assert due_followups(d(30), t0, S.APPROVED, []) == ["lender_w4", "borrower_30"]
+    assert due_followups(d(31), t0, S.SUBMITTED, ["borrower_30"]) == ["lender_w4"]
+    # Borrower check-in is dropped if more than 14 days late.
+    assert "borrower_30" not in due_followups(d(45), t0, S.SUBMITTED, [])
+    assert "borrower_60" in due_followups(d(61), t0, S.CLOSING, [])
+    # Capped at 8 weeks, and closed files get nothing.
+    assert not any(k.startswith("lender_") for k in due_followups(d(70), t0, S.SUBMITTED, []))
+    for done in (S.FUNDED, S.DECLINED, S.WITHDRAWN, S.PREQUALIFIED):
+        assert due_followups(d(30), t0, done, []) == []
+    assert due_followups(d(30), None, S.SUBMITTED, []) == []
