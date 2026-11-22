@@ -11,7 +11,9 @@ from app.engine import statuses as S
 from app.engine.metrics import accuracy_summary
 from app.engine.referral_service import InvalidTransition, record_status, serialize_referral
 from app.models.bank_profile import BankProfile
-from app.models.partner import BorrowerCheckin, Referral, StatusEvent, WebhookDelivery
+from app.models.application_financials import ApplicationFinancials
+from app.models.partner import BorrowerCheckin, Partner, Referral, StatusEvent, WebhookDelivery
+from app.models.soft_pull_result import SoftPullResult
 from app.engine.handoff_service import HandoffError, send_handoff
 from app.services.audit_service import log_event
 
@@ -61,16 +63,25 @@ def list_checkins(limit: int = 100, db: Session = Depends(get_db)):
     ]}
 
 
+def _real_referrals(db, include_sandbox):
+    """Sandbox partners use practice data; by default they never count toward real numbers."""
+    q = db.query(Referral)
+    if not include_sandbox:
+        q = q.join(Partner, Partner.id == Referral.partner_id).filter(Partner.mode == "live")
+    return q
+
+
 @router.get("/metrics/lending-accuracy")
-def lending_accuracy(partner_id: Optional[int] = None, db: Session = Depends(get_db)):
-    """Funded loans / fully submitted applications (credit pulls and abandoned forms don't count)."""
+def lending_accuracy(partner_id: Optional[int] = None, include_sandbox: bool = False, db: Session = Depends(get_db)):
+    """Funded loans / fully submitted applications (credit pulls and abandoned forms don't count).
+    Live partners only unless include_sandbox=true."""
     def count(*conds):
-        q = db.query(func.count(Referral.id)).filter(Referral.submitted_at.isnot(None))
+        q = _real_referrals(db, include_sandbox).filter(Referral.submitted_at.isnot(None))
         if partner_id:
             q = q.filter(Referral.partner_id == partner_id)
         for c in conds:
             q = q.filter(c)
-        return q.scalar() or 0
+        return q.count()
 
     out = accuracy_summary(
         submitted=count(),
@@ -80,13 +91,58 @@ def lending_accuracy(partner_id: Optional[int] = None, db: Session = Depends(get
     )
     # Why lenders say no: the raw material for improving the lender rules.
     reasons = (
-        db.query(StatusEvent.reason_code, func.count(StatusEvent.id))
+        _real_referrals(db, include_sandbox)
+        .join(StatusEvent, StatusEvent.referral_id == Referral.id)
         .filter(StatusEvent.status == S.DECLINED, StatusEvent.source == "lender")
+        .with_entities(StatusEvent.reason_code, func.count(StatusEvent.id))
         .group_by(StatusEvent.reason_code)
         .all()
     )
     out["decline_reasons"] = {(code or "unspecified"): n for code, n in reasons}
+    out["includes_sandbox"] = include_sandbox
     return out
+
+
+@router.get("/outcomes/export")
+def export_outcomes(include_sandbox: bool = False, limit: int = 5000, db: Session = Depends(get_db)):
+    """
+    De-identified training rows for the in-house decision model: one per fully submitted
+    referral. No names, emails, addresses, dates of birth or free-text notes. Live partners
+    only unless include_sandbox=true. Fine to hand to an AI model; do not add identifiers here.
+    """
+    refs = (
+        _real_referrals(db, include_sandbox)
+        .filter(Referral.submitted_at.isnot(None))
+        .order_by(Referral.id).limit(max(1, min(limit, 20000))).all()
+    )
+    rows = []
+    for r in refs:
+        fin = db.query(ApplicationFinancials).filter(ApplicationFinancials.application_id == r.application_id).first()
+        pull = db.query(SoftPullResult).filter(SoftPullResult.application_id == r.application_id).order_by(SoftPullResult.id.desc()).first()
+        decline = (
+            db.query(StatusEvent)
+            .filter(StatusEvent.referral_id == r.id, StatusEvent.status == S.DECLINED, StatusEvent.source == "lender")
+            .order_by(StatusEvent.id.desc()).first()
+        )
+        rows.append({
+            "ref": r.public_id,
+            "lender": r.lender_name,
+            "industry": r.industry,
+            "state": r.business_state,
+            "credit_score": pull.credit_score if pull else None,
+            "credit_basis": pull.source if pull else None,
+            "years_in_business": fin.years_in_business if fin else None,
+            "annual_revenue": fin.annual_revenue if fin else None,
+            "annual_net_operating_income": fin.annual_net_operating_income if fin else None,
+            "annual_debt_payments": fin.annual_debt_payments if fin else None,
+            "dscr": fin.dscr if fin else None,
+            "outcome": r.status,
+            "funded": r.status == S.FUNDED,
+            "decline_reason_code": decline.reason_code if decline else None,
+            "submitted_at": r.submitted_at,
+            "closed_at": r.funded_at or r.declined_at or r.withdrawn_at,
+        })
+    return {"count": len(rows), "includes_sandbox": include_sandbox, "rows": rows}
 
 
 @router.get("/webhooks/deliveries")
