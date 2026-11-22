@@ -34,7 +34,7 @@ h2{margin:0 0 4px}h3{margin:20px 0 6px;font-size:15px;color:#334155}
 label{display:block;font-size:13px;color:#334155;margin-top:10px}
 input,select{width:100%;box-sizing:border-box;font-size:16px;padding:9px;border:1px solid #cbd5e1;border-radius:8px;margin-top:3px}
 .row{display:flex;gap:10px}.row>div{flex:1}
-.consent{background:#f1f5f9;border-radius:8px;padding:12px;font-size:13px;margin-top:14px}
+.consent{background:#f1f5f9;border-radius:8px;padding:4px 12px;font-size:13px;margin-top:14px}.consent p{margin:8px 0}
 .chk{display:flex;gap:8px;align-items:flex-start;margin-top:10px}.chk input{width:auto;margin-top:3px}.chk label{margin:0}
 button{margin-top:16px;width:100%;font-size:16px;padding:12px;border:0;border-radius:8px;background:#0f766e;color:#fff;cursor:pointer}
 button[disabled]{opacity:.6}.err{color:#b91c1c;font-size:14px;margin-top:10px}.muted{color:#475569;font-size:13px}
@@ -149,7 +149,7 @@ def _form_html(sess, partner):
 <h3>What you need</h3>
 <div class='row'><div>{_field('amount','Amount requested ($)',g('loan_amount'),'number','min=1')}</div>
 <div><label>Type<select name='loan_type'>{opts}</select></label></div></div>
-<div class='consent'>{escape(CONSENT_TEXT)}</div>
+<div class='consent'>{''.join('<p>' + escape(part) + '</p>' for part in CONSENT_TEXT.split(chr(10) * 2))}</div>
 <div class='chk'><input type='checkbox' name='consent' id='consent' required><label for='consent'>I have read and agree to the above.</label></div>
 {_field('signer_name','Type your full name as your signature')}
 <div class='err' id='err' role='alert'></div>
