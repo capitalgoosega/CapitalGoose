@@ -5,6 +5,7 @@ class Settings(BaseSettings):
     gmail_user: str = ""
     gmail_app_password: str = ""
     sender_email: str = ""
+    reply_to_email: str = ""
     resend_api_key: str = ""
     gmail_client_id: str = ""
     gmail_client_secret: str = ""
