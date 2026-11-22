@@ -20,6 +20,18 @@ class ApplicantIn(BaseModel):
     phone: Optional[str] = Field(default=None, max_length=30)
     dob: str                      # YYYY-MM-DD or MM/DD/YYYY; used for the age check and the pull, not stored
     address: AddressIn
+    # Only used when the engine runs on self-reported credit ranges.
+    credit_band: Optional[str] = Field(default=None, max_length=20)
+
+    @field_validator("credit_band")
+    @classmethod
+    def _band(cls, v):
+        if v is None or v == "":
+            return None
+        from app.engine.credit_bands import BANDS
+        if v not in BANDS:
+            raise ValueError("credit_band must be one of: " + ", ".join(BANDS))
+        return v
 
 
 class BusinessIn(BaseModel):

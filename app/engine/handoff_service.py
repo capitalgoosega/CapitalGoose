@@ -71,29 +71,36 @@ def document_summary(db, referral):
     }
 
 
-def send_handoff(db, referral, lender):
+def resolve_recipient(db, referral, real_email, label):
     """
-    Creates a fresh access grant + status link (revoking any earlier ones for
-    this referral) and emails the lender. Used for the first handoff and resends.
+    Where an email for this referral may actually go. Returns (address, suppress).
+    Sandbox referrals use simulated data and must NEVER reach a real person.
     """
     partner = db.query(Partner).filter(Partner.id == referral.partner_id).first()
     sandbox = partner is None or partner.mode != "live"
     test_inbox = os.environ.get("TEST_RECIPIENT_EMAIL")
 
-    recipient = lender.contact_email
+    recipient = real_email
     suppress_email = False
     if sandbox:
-        # Sandbox referrals use simulated data and must NEVER reach a real lender.
         recipient = test_inbox
         suppress_email = not test_inbox
-        log_event(db, f"[handoff] sandbox referral {referral.public_id}: " + (
-            "redirected to test inbox" if test_inbox else "lender email suppressed"))
+        log_event(db, f"[email] sandbox referral {referral.public_id}: " + (
+            "redirected to test inbox" if test_inbox else "email suppressed"))
     elif os.environ.get("TEST_MODE", "").lower() == "true" and test_inbox:
         recipient = test_inbox
-        log_event(db, f"TEST MODE: handoff for {lender.name} redirected to test inbox")
+        log_event(db, f"TEST MODE: email for {label} redirected to test inbox")
     if not recipient and not suppress_email:
-        raise HandoffError(f"No contact email is configured for {lender.name}")
-    recipient = recipient or "sandbox-suppressed@invalid"
+        raise HandoffError(f"No contact email is configured for {label}")
+    return recipient or "sandbox-suppressed@invalid", suppress_email
+
+
+def send_handoff(db, referral, lender):
+    """
+    Creates a fresh access grant + status link (revoking any earlier ones for
+    this referral) and emails the lender. Used for the first handoff and resends.
+    """
+    recipient, suppress_email = resolve_recipient(db, referral, lender.contact_email, lender.name)
 
     for old in db.query(DocumentAccessGrant).filter(
         DocumentAccessGrant.application_id == referral.application_id,

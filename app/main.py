@@ -191,6 +191,10 @@ app.include_router(router)
 from app.engine.webhook_service import start_worker
 start_worker(SessionLocal)
 
+# Weekly lender reminders and 30/60/90-day borrower check-ins. Set DISABLE_FOLLOWUPS=1 to turn off.
+from app.engine.followup_service import start_worker as start_followup_worker
+start_followup_worker(SessionLocal)
+
 
 @app.get("/")
 def root():

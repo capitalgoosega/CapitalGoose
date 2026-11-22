@@ -8,7 +8,7 @@ own wording and version.
 """
 import json
 import secrets
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from html import escape
 
 from fastapi import APIRouter, Depends, Request
@@ -21,7 +21,11 @@ from app.engine.consent import CONSENT_TEXT, CONSENT_VERSION
 from app.engine.lender_links import hash_link_token
 from app.engine.ratelimit import SlidingWindowLimiter
 from app.engine.referral_service import EngineUnavailable, create_referral, serialize_referral
-from app.engine.credit_provider import ProviderNotConfigured
+from app.engine import statuses as S
+from app.engine.credit_bands import BAND_LABELS
+from app.engine.credit_provider import ProviderNotConfigured, uses_self_reported
+from app.engine.documents import DOC_TYPES, check_upload
+from app.engine.handoff_service import HandoffError, document_summary, handoff, store_document
 from app.models.partner import Partner, Referral, WidgetSession
 from app.schemas.partner_api import ReferralCreate
 
@@ -39,6 +43,8 @@ input,select{width:100%;box-sizing:border-box;font-size:16px;padding:9px;border:
 button{margin-top:16px;width:100%;font-size:16px;padding:12px;border:0;border-radius:8px;background:#0f766e;color:#fff;cursor:pointer}
 button[disabled]{opacity:.6}.err{color:#b91c1c;font-size:14px;margin-top:10px}.muted{color:#475569;font-size:13px}
 .ok{background:#ecfdf5;border:1px solid #6ee7b7;border-radius:10px;padding:14px;margin-top:12px}
+.doc{display:flex;justify-content:space-between;align-items:center;gap:8px;border-bottom:1px solid #e2e8f0;padding:8px 0;font-size:14px}
+.doc input{width:auto;font-size:13px}.done{color:#047857}
 .no{background:#f8fafc;border:1px solid #cbd5e1;border-radius:10px;padding:14px;margin-top:12px}
 """
 
@@ -93,7 +99,8 @@ _JS_FORM = """
     e.preventDefault(); err.textContent=''; btn.disabled=true;
     var body={
       applicant:{first_name:v('first_name'),last_name:v('last_name'),email:v('email'),phone:v('phone')||null,dob:v('dob'),
-        address:{street:v('street'),city:v('city'),state:v('addr_state'),zip:v('zip')}},
+        address:{street:v('street'),city:v('city'),state:v('addr_state'),zip:v('zip')},
+        credit_band:(f.elements['credit_band']?v('credit_band'):null)||null},
       business:{legal_name:v('legal_name'),state:v('state'),industry:'construction',years_in_business:num('years'),
         annual_revenue:num('revenue'),annual_net_operating_income:num('noi'),annual_debt_payments:num('debt')},
       loan:{amount:num('amount'),type:v('loan_type')},
@@ -124,6 +131,15 @@ def _field(name, label, value="", type_="text", extra=""):
     return (f"<label>{escape(label)}<input name='{name}' type='{type_}' value='{escape(value)}' {extra} required></label>")
 
 
+def _band_field():
+    if not uses_self_reported():
+        return ""
+    opts = "".join(f"<option value='{k}'>{escape(v)}</option>" for k, v in BAND_LABELS.items())
+    return (f"<label>Your best estimate of your personal credit score<select name='credit_band' required>"
+            f"<option value=''>Select a range</option>{opts}</select></label>"
+            "<p class='muted'>We use the range you select. We do not pull your credit report.</p>")
+
+
 def _form_html(sess, partner):
     pre = json.loads(sess.prefill_json or "{}")
     g = lambda k: pre.get(k, "")   # noqa: E731
@@ -141,6 +157,7 @@ def _form_html(sess, partner):
 {_field('dob','Date of birth','', 'date')}
 {_field('street','Home street address')}
 <div class='row'><div>{_field('city','City')}</div><div>{_field('addr_state','State','', 'text','maxlength=2')}</div><div>{_field('zip','ZIP','', 'text','maxlength=10')}</div></div>
+{_band_field()}
 <h3>Your business</h3>
 {_field('legal_name','Business legal name',g('legal_name'))}
 <div class='row'><div>{_field('state','State of operation',g('state'),'text','maxlength=2')}</div><div>{_field('years','Years in business',g('years_in_business'),'number','min=0 step=0.5')}</div></div>
@@ -160,6 +177,56 @@ def _form_html(sess, partner):
 """
 
 
+_JS_DOCS = """
+(function(){
+  var base=location.pathname.replace(/\\/$/,''), err=document.getElementById('derr');
+  function size(){var o=document.body.dataset.origin; if(o&&window.parent!==window)window.parent.postMessage({type:'capitalgoose:resize',height:document.documentElement.scrollHeight},o);}
+  function fail(m){err.textContent=m;size();}
+  Array.prototype.forEach.call(document.querySelectorAll('input[data-doc]'),function(inp){
+    inp.addEventListener('change',function(){
+      var file=inp.files[0]; if(!file)return; err.textContent='';
+      if(file.size>15*1024*1024){fail('That file is larger than 15 MB.');return;}
+      inp.disabled=true;
+      fetch(base+'/documents/'+inp.dataset.doc+'?filename='+encodeURIComponent(file.name),{method:'PUT',body:file})
+      .then(function(r){return r.json().then(function(j){return {s:r.status,j:j};});})
+      .then(function(x){ if(x.s===201){location.reload();} else {fail(x.j.detail||'Upload failed.');inp.disabled=false;inp.value='';} })
+      .catch(function(){fail('Network error. Please try again.');inp.disabled=false;});
+    });
+  });
+  var go=document.getElementById('send');
+  if(go)go.addEventListener('click',function(){
+    go.disabled=true; err.textContent='';
+    fetch(base+'/send',{method:'POST'}).then(function(r){return r.json().then(function(j){return {s:r.status,j:j};});})
+    .then(function(x){ if(x.s===200){location.reload();} else {fail(x.j.detail||'Could not send.');go.disabled=false;} })
+    .catch(function(){fail('Network error. Please try again.');go.disabled=false;});
+  });
+  size();
+})();
+"""
+
+
+def _next_steps_html(db, referral, partner, lender):
+    if referral.status != S.PREQUALIFIED:
+        if referral.status in S.FORWARD_PATH and S.FORWARD_PATH.index(referral.status) >= S.FORWARD_PATH.index(S.SUBMITTED):
+            return (f"<div class='ok'><h3>Your file was sent to {escape(lender)}</h3>"
+                    "<p>They will review it and contact you directly. This is not a loan approval or a commitment to lend.</p></div>")
+        return ""
+    summary = document_summary(db, referral)
+    have = {d["doc_type"] for d in summary["documents"]}
+    rows = "".join(
+        f"<div class='doc'><span>{escape(DOC_TYPES[t])}</span>"
+        + ("<span class='done'>Uploaded</span>" if t in have else f"<input type='file' data-doc='{t}' accept='application/pdf,image/png,image/jpeg'>")
+        + "</div>"
+        for t in summary["required"]
+    )
+    ready = not summary["missing"]
+    btn = ("<button id='send' type='button'>Send my file to " + escape(lender) + "</button>") if ready else \
+          "<p class='muted'>Upload all documents above to continue.</p>"
+    return (f"<h3>Next: upload your documents</h3><p class='muted'>PDF, PNG or JPEG, up to 15 MB each. Your files are encrypted "
+            f"and shared only with {escape(lender)}. This is not a loan approval or a commitment to lend.</p>{rows}"
+            f"<div class='err' id='derr' role='alert'></div>{btn}<script nonce='__NONCE__'>{_JS_DOCS}</script>")
+
+
 def _result_html(db, referral, partner):
     body = serialize_referral(db, referral)
     pre = body["prequalification"]
@@ -173,7 +240,7 @@ def _result_html(db, referral, partner):
             rng_txt = f"<p>Typical range this lender funds: {escape(lo)} to {escape(hi)}.</p>"
         inner = (f"<div class='ok'><h2>You may qualify</h2><p>Based on what you told us, <strong>{escape(pre['lender'])}</strong> "
                  f"looks like a good fit.</p>{rng_txt}<ul>{reasons}</ul></div>")
-        nxt = f"<p class='muted'>Next, {escape(partner.name)} will follow up to collect your documents. This is not a loan approval or a commitment to lend.</p>"
+        nxt = _next_steps_html(db, referral, partner, pre["lender"])
     else:
         blockers = "".join(f"<li>{escape(b['message'])}</li>" for b in pre["blockers"])
         inner = ("<div class='no'><h2>We couldn't match you right now</h2><p>These are the main reasons:</p>"
@@ -267,5 +334,56 @@ async def submit(token: str, request: Request, db: Session = Depends(get_db)):
         return JSONResponse({"detail": "We couldn't complete the check. Please try again."}, status_code=502)
 
     sess.referral_id = referral.id
+    # Leave time to gather and upload documents.
+    sess.expires_at = datetime.now(timezone.utc) + timedelta(hours=24)
     db.commit()
+    return {"ok": True}
+
+
+def _active_session(db, token, request):
+    """Returns (sess, partner, referral, error_response)."""
+    if not _limiter.allow(_client_ip(request)):
+        return None, None, None, JSONResponse({"detail": "Too many requests. Please wait a minute."}, status_code=429)
+    sess, partner = _load(db, token)
+    if not sess or not sess.referral_id:
+        return None, None, None, JSONResponse({"detail": "This link has expired."}, status_code=404)
+    referral = db.query(Referral).filter(Referral.id == sess.referral_id).first()
+    return sess, partner, referral, None
+
+
+@router.put("/{token}/documents/{doc_type}", status_code=201, tags=["widget"])
+async def upload(token: str, doc_type: str, filename: str, request: Request, db: Session = Depends(get_db)):
+    sess, partner, referral, err = _active_session(db, token, request)
+    if err:
+        return err
+    if doc_type not in DOC_TYPES:
+        return JSONResponse({"detail": "Unknown document type"}, status_code=422)
+    if referral.status != S.PREQUALIFIED:
+        return JSONResponse({"detail": "Documents can no longer be added"}, status_code=409)
+    declared = request.headers.get("content-length")
+    if declared and declared.isdigit() and int(declared) > 15 * 1024 * 1024:
+        return JSONResponse({"detail": "File is larger than 15 MB"}, status_code=413)
+    data = await request.body()
+    content_type, status, msg = check_upload(data)
+    if status:
+        return JSONResponse({"detail": msg}, status_code=status)
+    try:
+        store_document(db, referral, doc_type, filename, data, content_type)
+    except HandoffError as e:
+        return JSONResponse({"detail": str(e)}, status_code=409)
+    return {"ok": True}
+
+
+@router.post("/{token}/send", tags=["widget"])
+def send(token: str, request: Request, db: Session = Depends(get_db)):
+    sess, partner, referral, err = _active_session(db, token, request)
+    if err:
+        return err
+    try:
+        handoff(db, referral)
+    except HandoffError as e:
+        return JSONResponse({"detail": str(e)}, status_code=409)
+    except Exception:
+        db.rollback()
+        return JSONResponse({"detail": "We couldn't send your file. Please try again."}, status_code=502)
     return {"ok": True}

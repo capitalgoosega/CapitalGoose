@@ -138,3 +138,27 @@ class WidgetSession(Base):
     created_at = Column(DateTime(timezone=True), default=_now)
     expires_at = Column(DateTime(timezone=True), nullable=False)
     referral_id = Column(Integer, ForeignKey("referrals.id"), nullable=True)  # set once submitted
+
+
+class FollowUp(Base):
+    """One reminder or check-in sent for a referral. (referral, kind) is unique, so nothing is sent twice."""
+    __tablename__ = "referral_followups"
+    __table_args__ = (UniqueConstraint("referral_id", "kind", name="uq_followup_referral_kind"),)
+
+    id = Column(Integer, primary_key=True, index=True)
+    referral_id = Column(Integer, ForeignKey("referrals.id"), nullable=False, index=True)
+    kind = Column(String, nullable=False)          # lender_w1..w8, borrower_30/60/90
+    token_hash = Column(String, nullable=True, unique=True, index=True)   # borrower check-in link
+    sent_at = Column(DateTime(timezone=True), default=_now)
+    suppressed = Column(Boolean, nullable=False, default=False)          # sandbox with no test inbox
+
+
+class BorrowerCheckin(Base):
+    """The applicant's one-tap answer to a check-in."""
+    __tablename__ = "borrower_checkins"
+
+    id = Column(Integer, primary_key=True, index=True)
+    referral_id = Column(Integer, ForeignKey("referrals.id"), nullable=False, index=True)
+    followup_id = Column(Integer, ForeignKey("referral_followups.id"), nullable=False, index=True)
+    answer = Column(String, nullable=False)
+    created_at = Column(DateTime(timezone=True), default=_now)

@@ -13,7 +13,7 @@ from app.engine.security import new_public_id
 from app.engine.webhook_service import enqueue_event
 from app.models.application import Application
 from app.models.eligibility_result import LenderEligibilityResult
-from app.models.partner import Consent, Partner, Referral, StatusEvent
+from app.models.partner import Consent, LenderStatusLink, Partner, Referral, StatusEvent
 from app.services.audit_service import log_event
 from app.services.credit_service import verify_age
 from app.services.eligibility_service import evaluate_lenders, extract_financials, save_financials
@@ -48,6 +48,13 @@ def record_status(db, referral, new_status, detail=None, source="engine", force=
         referral.withdrawn_at = now
 
     db.add(StatusEvent(referral_id=referral.id, status=new_status, source=source, detail=detail, reason_code=reason_code))
+
+    if new_status in (S.FUNDED, S.DECLINED, S.WITHDRAWN):
+        # Nothing more to report: retire every lender link, including reminder links.
+        for link in db.query(LenderStatusLink).filter(
+            LenderStatusLink.referral_id == referral.id, LenderStatusLink.revoked == False,  # noqa: E712
+        ).all():
+            link.revoked = True
 
     mapped = S.APPLICATION_STATUS.get(new_status)
     if mapped:
@@ -154,6 +161,7 @@ def create_referral(db, partner, payload, idempotency_key=None, partner_ip=None)
         pull = provider.pull(db, application.id, PullRequest(
             first_name=applicant.first_name, last_name=applicant.last_name,
             dob=applicant.dob, address=applicant.address.model_dump(),
+            credit_band=applicant.credit_band,
         ))
     except Exception:
         # Free the idempotency key so the partner's retry starts a fresh referral
@@ -196,6 +204,7 @@ def create_referral(db, partner, payload, idempotency_key=None, partner_ip=None)
             "reasons": match_reasons(checks_by_lender.get(best.name, [])),
             "blockers": [],
             "likely_range": likely_range(best.min_loan_amount, best.max_loan_amount),
+            "credit_basis": provider.name,
         })
         record_status(db, referral, S.PREQUALIFIED, detail=f"matched {best.name}")
     else:
@@ -203,6 +212,7 @@ def create_referral(db, partner, payload, idempotency_key=None, partner_ip=None)
             "matched": False,
             "reasons": [],
             "blockers": no_match_blockers(list(checks_by_lender.values())),
+            "credit_basis": provider.name,
         })
         record_status(db, referral, S.NO_MATCH, detail="no eligible lender")
 
@@ -230,6 +240,8 @@ def serialize_referral(db, referral, include_internal=False):
             "likely_range": prequal.get("likely_range") if prequal.get("matched") else None,
             "reasons": prequal.get("reasons", []),
             "blockers": prequal.get("blockers", []),
+            # "self_reported" means the credit range came from the applicant, not a bureau.
+            "credit_basis": prequal.get("credit_basis"),
         },
         "timeline": [{"status": e.status, "at": e.created_at} for e in events if not (e.detail == "credit pull failed")],
     }

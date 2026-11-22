@@ -2,7 +2,7 @@ from fastapi import APIRouter, Depends
 from app.api import (
     intake, package, applications, webhooks, vault, bank_portal,
     admin_lenders, admin_bank_users, admin_eligibility, admin_access_grants,
-    admin_partners, admin_referrals, partner_v1, lender_status, widget,
+    admin_partners, admin_referrals, partner_v1, lender_status, widget, checkin,
 )
 from app.api.admin_auth import require_admin
 
@@ -29,6 +29,7 @@ router.include_router(partner_v1.router, prefix="/v1")
 
 # No-login lender status links: the unguessable token in the URL is the credential
 router.include_router(lender_status.router, prefix="/lender-status")
+router.include_router(checkin.router, prefix="/checkin")
 
 # Hosted pre-qual form + iframe widget: single-use session token in the URL, no API key in the browser
 router.include_router(widget.router, prefix="/widget")

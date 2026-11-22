@@ -102,3 +102,39 @@ Real credit provider (CRS/Array), loan-size ranges per lender, hosted pre-qual f
 widget (needs short-lived widget tokens so API keys never sit in a browser), automated weekly lender
 follow-ups, 30/60/90-day borrower check-ins, partner portal, local-model document extraction, de-identified outcome dataset.
 Counsel must sign off on the consent wording, FCRA permissible purpose, and Form 159 terms before any live pull.
+
+## Self-reported credit ranges (no bureau)
+
+Set `CREDIT_PROVIDER=self_reported` on Railway. No credit report is pulled; the applicant picks a
+range and we use its **lower bound** (so matching can only be more conservative). This unblocks
+live partner keys while no bureau is contracted.
+
+- API: add `applicant.credit_band` — one of `below_580`, `580_649`, `650_679`, `680_719`, `720_plus` (required in this mode).
+- Hosted widget: a range selector appears automatically.
+- Responses carry `prequalification.credit_basis` (`"self_reported"` vs a bureau name) so you can show the right caveat.
+- The consent wording must be attorney-reviewed for this mode before `CONSENT_TEXT_APPROVED=true`.
+- Switch to a bureau later by changing `CREDIT_PROVIDER`; nothing else changes.
+
+## Finishing inside the hosted widget
+
+After a match, the widget shows the required documents and a **Send my file** button, so a partner with no UI of
+its own can complete the whole flow. Under the hood (all keyed by the widget token, no API key in the browser):
+
+- `PUT /widget/{token}/documents/{doc_type}?filename=...` (raw bytes: PDF/PNG/JPEG, 15 MB)
+- `POST /widget/{token}/send`
+
+The session stays valid for 24 hours after the check completes. API partners keep using
+`PUT /v1/referrals/{id}/documents/{doc_type}` and `POST /v1/referrals/{id}/submit`.
+
+## Follow-ups (automatic)
+
+An hourly worker (disable with `DISABLE_FOLLOWUPS=1`) sends, for referrals that are submitted but not closed:
+
+- **Lender:** a weekly status reminder for up to 8 weeks, with a fresh private status link.
+- **Borrower:** a one-tap check-in at 30, 60 and 90 days (`/checkin/{token}`): funded / still waiting / went elsewhere / no longer needed.
+
+Only the current window is sent (no bursts after downtime), each follow-up at most once. Sandbox referrals go to
+`TEST_RECIPIENT_EMAIL` or are suppressed. All lender links are retired when a file is funded, declined or withdrawn.
+
+Admin: `POST /admin/referrals/followups/run` (send due ones now), `GET /admin/referrals/checkins/list`.
+Borrower answers are recorded for review; they do not change a referral's status (the lender remains the source of truth).

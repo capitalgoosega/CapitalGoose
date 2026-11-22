@@ -214,3 +214,29 @@ def send_lender_handoff_email(recipient_email, bank_name, code, status_url):
         "New Qualified Applicant from Capital Goose - Ready for Review",
         body,
     )
+
+
+def send_lender_reminder_email(recipient_email, bank_name, reference, status_url, weeks_open):
+    # Reference id only; no applicant details in email.
+    body = (
+        "Hello,\n\n"
+        f"A quick check on file {reference}, sent to {bank_name} about {weeks_open} week(s) ago.\n\n"
+        "One tap tells us where it stands (received, approved, closing, funded or declined). "
+        "This link is private to this file; please do not forward it:\n\n"
+        f"{status_url}\n\n"
+        "Thank you,\n\n"
+        "Capital Goose Team"
+    )
+    send_email(recipient_email, f"Status check: Capital Goose file {reference}", body)
+
+
+def send_borrower_checkin_email(recipient_email, first_name, lender_name, checkin_url, days):
+    body = (
+        f"Hi {first_name},\n\n"
+        f"About {days} days ago we sent your loan file to {lender_name}. "
+        "We'd like to know how it's going, and it takes one tap:\n\n"
+        f"{checkin_url}\n\n"
+        "If you would rather not get these check-ins, just reply and let us know.\n\n"
+        "Capital Goose Team"
+    )
+    send_email(recipient_email, "How is your loan going?", body)

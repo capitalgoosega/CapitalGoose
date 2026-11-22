@@ -17,7 +17,7 @@ from sqlalchemy.orm import Session
 from app.db.session import get_db
 from app.engine.credit_provider import ProviderNotConfigured
 from app.engine.ratelimit import SlidingWindowLimiter
-from app.engine.documents import DOC_TYPES, MAX_BYTES, sniff_content_type
+from app.engine.documents import DOC_TYPES, MAX_BYTES, check_upload
 from app.engine.handoff_service import HandoffError, document_summary, handoff, store_document
 from app.engine.referral_service import EngineUnavailable, create_referral, serialize_referral
 from app.engine import statuses as S
@@ -141,13 +141,9 @@ async def upload_document(
     if declared and declared.isdigit() and int(declared) > MAX_BYTES:
         raise HTTPException(status_code=413, detail="File is larger than 15 MB")
     data = await request.body()
-    if not data:
-        raise HTTPException(status_code=422, detail="Empty file")
-    if len(data) > MAX_BYTES:
-        raise HTTPException(status_code=413, detail="File is larger than 15 MB")
-    content_type = sniff_content_type(data)
-    if not content_type:
-        raise HTTPException(status_code=415, detail="Only PDF, PNG or JPEG files are accepted")
+    content_type, err_status, err_msg = check_upload(data)
+    if err_status:
+        raise HTTPException(status_code=err_status, detail=err_msg)
     try:
         blob = store_document(db, referral, doc_type, filename, data, content_type)
     except HandoffError as e:
