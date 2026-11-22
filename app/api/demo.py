@@ -193,12 +193,15 @@ function poll(){
     var reached=ORDER.indexOf(j.status),terminal=ORDER.indexOf(j.status)<0;
     document.getElementById('ref').innerHTML='<b>'+j.status.replace('_',' ')+'</b>'+(j.prequalification.lender?' &middot; '+j.prequalification.lender:'');
     document.getElementById('tl').innerHTML=ORDER.map(function(s,i){return '<li class="'+(i<=reached?'done':'')+'">'+s.replace('_',' ')+'</li>';}).join('')+(terminal?'<li class="done">'+j.status+'</li>':'');
-    document.getElementById('acts').innerHTML=(j.actions||[]).map(function(a){return '<button class="btn" data-s="'+a+'">Lender: '+a.replace('_',' ')+'</button>';}).join('')||'<span class="muted">Available once the file is sent to the lender.</span>';
+    var acts=(j.actions||[]).map(function(a){return '<button class="btn" data-s="'+a+'">Lender: '+a.replace('_',' ')+'</button>';}).join('');
+    if(!acts){acts=j.status==='funded'?'<div style="margin-top:6px"><b>Funded.</b> The demo is complete.</div><button class="btn fill" id="again">Start a new demo</button>':(reached>=ORDER.indexOf('submitted')?'<span class="muted">No further steps.</span>':'<span class="muted">Available once the file is sent to the lender.</span>');}
+    document.getElementById('acts').innerHTML=acts;
+    var ag=document.getElementById('again');if(ag)ag.onclick=function(){location.reload();};
     Array.prototype.forEach.call(document.querySelectorAll('#acts button'),function(b){b.onclick=function(){
       b.disabled=true;L('w','Lender link &rarr; '+b.dataset.s);
       fetch('/demo/referral/'+refId+'/lender',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({status:b.dataset.s})}).then(poll);};});
     if(j.status==='submitted'&&!poll.sent){poll.sent=1;L('t','Documents encrypted &rarr; lender emailed a secure link (test inbox in sandbox)');}
-    if(j.status==='funded')L('t','Funded: this counts toward lending accuracy (live partners only; sandbox excluded)');
+    if(j.status==='funded'&&!poll.fundedLogged){poll.fundedLogged=1;L('t','Funded: this counts toward lending accuracy (live partners only; sandbox excluded)');}
   }).catch(function(){});
 }
 setInterval(poll,3000);
