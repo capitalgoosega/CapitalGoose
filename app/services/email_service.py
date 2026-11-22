@@ -29,6 +29,13 @@ def _send_via_gmail_api(to, subject, body, html=False):
     message = MIMEMultipart("alternative")
     message["to"] = to
     message["subject"] = subject
+    # From only takes effect if Gmail has this address set up as a "Send mail as" alias
+    # (otherwise Gmail quietly keeps the authenticated account's address).
+    if settings.sender_email:
+        message["from"] = f"Capital Goose <{settings.sender_email}>"
+    # A no-reply sender still needs replies to land somewhere a person reads.
+    if settings.reply_to_email:
+        message["reply-to"] = settings.reply_to_email
 
     if html:
         message.attach(MIMEText(body, "html"))
