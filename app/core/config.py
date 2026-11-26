@@ -12,6 +12,8 @@ class Settings(BaseSettings):
     smtp_user: str = ""
     smtp_password: str = ""
     resend_api_key: str = ""
+    # "resend" to send through Resend (needs RESEND_API_KEY and a verified SENDER_EMAIL domain).
+    email_provider: str = ""
     gmail_client_id: str = ""
     gmail_client_secret: str = ""
     gmail_refresh_token: str = ""
