@@ -74,13 +74,44 @@ def _send_via_gmail(message):
     response.raise_for_status()
 
 
+def resend_configured():
+    return settings.email_provider == "resend" and bool(settings.resend_api_key and settings.sender_email)
+
+
+def _send_via_resend(to, subject, body, html=False):
+    """Resend's HTTPS API. Works on hosts that block SMTP. The sender domain must be verified in Resend."""
+    payload = {
+        "from": f"Capital Goose <{settings.sender_email}>",
+        "to": [to],
+        "subject": subject,
+        "html" if html else "text": body,
+    }
+    if settings.reply_to_email:
+        payload["reply_to"] = settings.reply_to_email
+    response = requests.post(
+        "https://api.resend.com/emails",
+        headers={"Authorization": f"Bearer {settings.resend_api_key}"},
+        json=payload,
+        timeout=10,
+    )
+    if response.status_code >= 400:
+        raise RuntimeError(f"Resend {response.status_code}: {response.text[:200]}")
+
+
 def _deliver(to, subject, body, html=False):
-    """Send through SMTP (e.g. Titan) when configured; otherwise through the Gmail API."""
+    """Send via Resend when EMAIL_PROVIDER=resend, else SMTP if configured, else the Gmail API.
+    If the preferred route fails, fall back to Gmail so a lender email is never lost."""
     message = _build_message(to, subject, body, html=html)
-    if smtp_configured():
-        _send_via_smtp(message)
-    else:
-        _send_via_gmail(message)
+    try:
+        if resend_configured():
+            _send_via_resend(to, subject, body, html=html)
+            return
+        if smtp_configured():
+            _send_via_smtp(message)
+            return
+    except Exception as e:
+        print(f"EMAIL primary route failed ({e}); falling back to Gmail")
+    _send_via_gmail(message)
 
 
 def send_email(to, subject, body, html=False):
