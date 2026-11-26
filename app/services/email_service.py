@@ -1,4 +1,6 @@
 import base64
+import smtplib
+import ssl
 import requests
 from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
@@ -23,27 +25,43 @@ def _get_access_token():
     return response.json()["access_token"]
 
 
-def _send_via_gmail_api(to, subject, body, html=False):
-    access_token = _get_access_token()
-
+def _build_message(to, subject, body, html=False):
     message = MIMEMultipart("alternative")
     message["to"] = to
     message["subject"] = subject
-    # From only takes effect if Gmail has this address set up as a "Send mail as" alias
-    # (otherwise Gmail quietly keeps the authenticated account's address).
+    # With SMTP (Titan) the From address is real. With the Gmail API it only takes effect if
+    # Gmail has the address set up as a "Send mail as" alias (otherwise Gmail keeps its own).
     if settings.sender_email:
         message["from"] = f"Capital Goose <{settings.sender_email}>"
     # A no-reply sender still needs replies to land somewhere a person reads.
     if settings.reply_to_email:
         message["reply-to"] = settings.reply_to_email
+    message.attach(MIMEText(body, "html" if html else "plain"))
+    return message
 
-    if html:
-        message.attach(MIMEText(body, "html"))
+
+def smtp_configured():
+    return bool(settings.smtp_host and settings.smtp_user and settings.smtp_password)
+
+
+def _send_via_smtp(message):
+    port = settings.smtp_port
+    from_addr = settings.sender_email or settings.smtp_user
+    context = ssl.create_default_context()
+    if port == 465:
+        with smtplib.SMTP_SSL(settings.smtp_host, port, context=context, timeout=15) as server:
+            server.login(settings.smtp_user, settings.smtp_password)
+            server.send_message(message, from_addr=from_addr)
     else:
-        message.attach(MIMEText(body, "plain"))
+        with smtplib.SMTP(settings.smtp_host, port, timeout=15) as server:
+            server.starttls(context=context)
+            server.login(settings.smtp_user, settings.smtp_password)
+            server.send_message(message, from_addr=from_addr)
 
+
+def _send_via_gmail(message):
+    access_token = _get_access_token()
     raw = base64.urlsafe_b64encode(message.as_bytes()).decode()
-
     response = requests.post(
         GMAIL_SEND_URL,
         headers={
@@ -56,10 +74,19 @@ def _send_via_gmail_api(to, subject, body, html=False):
     response.raise_for_status()
 
 
+def _deliver(to, subject, body, html=False):
+    """Send through SMTP (e.g. Titan) when configured; otherwise through the Gmail API."""
+    message = _build_message(to, subject, body, html=html)
+    if smtp_configured():
+        _send_via_smtp(message)
+    else:
+        _send_via_gmail(message)
+
+
 def send_email(to, subject, body, html=False):
     print(f"ATTEMPTING TO SEND EMAIL TO: {to}")
     try:
-        _send_via_gmail_api(to, subject, body, html=html)
+        _deliver(to, subject, body, html=html)
         print("EMAIL SENT SUCCESSFULLY")
     except Exception as e:
         print(f"EMAIL ERROR: {e}")
@@ -105,7 +132,7 @@ def send_congrats_email(to, collection_form_url):
 </body>
 </html>"""
 
-        _send_via_gmail_api(
+        _deliver(
             to,
             "Capital Goose — You're Pre-Qualified (Next Steps Required)",
             html,

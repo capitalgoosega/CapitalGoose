@@ -6,6 +6,11 @@ class Settings(BaseSettings):
     gmail_app_password: str = ""
     sender_email: str = ""
     reply_to_email: str = ""
+    # SMTP (e.g. Titan: smtp.titan.email, port 465). When set, it is used instead of the Gmail API.
+    smtp_host: str = ""
+    smtp_port: int = 465
+    smtp_user: str = ""
+    smtp_password: str = ""
     resend_api_key: str = ""
     gmail_client_id: str = ""
     gmail_client_secret: str = ""
